@@ -1,0 +1,9 @@
+geometry_msgs/PoseStamped target
+float64 position_tolerance
+float64 orientation_tolerance
+float64 velocity_scaling
+float64 acceleration_scaling
+bool execute
+---
+bool ok
+string message

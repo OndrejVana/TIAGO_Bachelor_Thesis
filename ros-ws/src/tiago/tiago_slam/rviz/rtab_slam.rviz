@@ -1,0 +1,258 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+  - Class: rviz/Time
+    Name: Time
+  - Class: rviz/Tool Properties
+    Name: Tool Properties
+
+Visualization Manager:
+  Class: ""
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map           # <-- matches RTAB-Map map frame
+    Frame Rate: 30
+  Name: root
+
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz/Grid
+      Color: 160; 160; 164
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Plane Cell Count: 10
+      Reference Frame: <Fixed Frame>
+
+    # 2D occupancy grid from RTAB-Map (relayed to /map)
+    - Alpha: 0.7
+      Class: rviz/Map
+      Color Scheme: map
+      Draw Behind: true
+      Enabled: true
+      Name: Map
+      Topic: /map              # <-- relay from /grid_map or /proj_map
+      Unreliable: false
+
+    # Optional: direct RTAB-Map grid (for debugging)
+    - Alpha: 0.7
+      Class: rviz/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: false           # start disabled; enable when debugging
+      Name: RTAB-Map Grid
+      Topic: /grid_map         # <-- direct RTAB-Map /grid_map
+      Unreliable: false
+
+    # Depth-based fake LaserScan from RGB-D
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: rviz/LaserScan
+      Color: 255; 0; 0
+      Enabled: true
+      Name: Depth Scan
+      Topic: /depth_scan
+      Size (m): 0.05
+
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Robot Description: robot_description
+      TF Prefix: ""
+
+    - Class: rviz/TF
+      Enabled: true
+      Frame Timeout: 15
+      Frames:
+        All Enabled: false
+        base_footprint:
+          Value: true
+        base_laser_link:
+          Value: true
+        base_link:
+          Value: true
+        map:
+          Value: true
+        odom:
+          Value: true
+        xtion_rgb_optical_frame:
+          Value: true
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+
+    # Global planner path from move_base
+    - Alpha: 1.0
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 25; 255; 0
+      Enabled: true
+      Head Diameter: 0.3
+      Head Length: 0.2
+      Length: 0.3
+      Line Style: Lines
+      Line Width: 0.03
+      Name: Global Plan
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.03
+      Shaft Diameter: 0.1
+      Shaft Length: 0.1
+      Topic: /tiago_move_base/move_base/NavfnROS/plan
+      Unreliable: false
+      Value: true
+
+    # Local planner path from move_base
+    - Alpha: 1.0
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 255; 0; 0
+      Enabled: true
+      Head Diameter: 0.3
+      Head Length: 0.2
+      Length: 0.3
+      Line Style: Lines
+      Line Width: 0.03
+      Name: Local Plan
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.03
+      Shaft Diameter: 0.1
+      Shaft Length: 0.1
+      Topic: /tiago_move_base/move_base/TrajectoryPlannerROS/local_plan
+      Unreliable: false
+      Value: true
+
+    # Your trajectory publisher (custom)
+    - Alpha: 1.0
+      Buffer Length: 100
+      Class: rviz/Path
+      Color: 0; 0; 255
+      Enabled: true
+      Head Diameter: 0.1
+      Head Length: 0.1
+      Length: 0.1
+      Line Style: Lines
+      Line Width: 0.05
+      Name: Robot Trajectory
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.03
+      Shaft Diameter: 0.05
+      Shaft Length: 0.05
+      Topic: /trajectory
+      Unreliable: false
+      Value: true
+
+    # RTAB-Map: global path in map frame
+    - Alpha: 1.0
+      Buffer Length: 100
+      Class: rviz/Path
+      Color: 255; 255; 0
+      Enabled: true
+      Head Diameter: 0.1
+      Head Length: 0.1
+      Length: 0.1
+      Line Style: Lines
+      Line Width: 0.05
+      Name: RTAB-Map Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 255; 0
+      Pose Style: None
+      Radius: 0.03
+      Shaft Diameter: 0.05
+      Shaft Length: 0.05
+      Topic: /mapPath         # <-- was /rtabmap/path (does not exist)
+      Unreliable: false
+      Value: true
+
+    # RTAB-Map: 3D cloud map
+    - Alpha: 1.0
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds: true
+      Class: rviz/PointCloud2
+      Enabled: true
+      Name: RTAB-Map Cloud
+      Topic: /cloud_map       # <-- was /rtabmap/cloud_map
+      Size (m): 0.05
+
+    # RGB camera image from Xtion
+    - Class: rviz/Image
+      Enabled: true
+      Name: RGB Image
+      Image Topic: /xtion/rgb/image_rect_color
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: raw
+
+    # Global costmap visualization (debug)
+    - Alpha: 0.7
+      Class: rviz/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: true
+      Name: Global Costmap
+      Topic: /tiago_move_base/move_base/global_costmap/costmap
+      Unreliable: false
+
+    # Local costmap visualization (debug)
+    - Alpha: 0.7
+      Class: rviz/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: true
+      Name: Local Costmap
+      Topic: /tiago_move_base/move_base/local_costmap/costmap
+      Unreliable: false
+
+  Tools:
+    - Class: rviz/Interact
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/SetInitialPose
+      Topic: /initialpose       # <-- initializes pose in map frame
+    - Class: rviz/SetGoal
+      Topic: /tiago_move_base/move_base_simple/goal
+  Value: true
+
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 10
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.06
+        Stereo Focal Distance: 1
+        Value: false
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Pitch: 0.785
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+      Yaw: 0.785
+
+Window Geometry:
+  Height: 846
+  Width: 1535
+  X: 67
+  Y: 60

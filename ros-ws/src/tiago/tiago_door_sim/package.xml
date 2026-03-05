@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>tiago_door_sim</name>
+  <version>0.0.1</version>
+  <description>Gazebo test world with a hinged door and an AprilTag plate for TIAGo pipeline testing.</description>
+
+  <maintainer email="you@todo.todo">Your Name</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>gazebo_ros</depend>
+  <depend>roscpp</depend>
+  <depend>rospy</depend>
+
+  <export>
+    <build_type>catkin</build_type>
+  </export>
+</package>

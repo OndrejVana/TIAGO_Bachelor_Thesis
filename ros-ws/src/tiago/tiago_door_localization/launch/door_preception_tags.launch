@@ -1,0 +1,59 @@
+<launch>
+  <arg name="config" default="$(find tiago_door_localization)/config/apriltag_two_sided_door.yaml"/>
+  <rosparam command="load" file="$(arg config)"/>
+
+  <!-- AprilTag detector -->
+  <node pkg="apriltag_ros" type="apriltag_ros_continuous_node" name="apriltag_detector" output="screen" clear_params="true">
+    <param name="tag_family" value="tag36h11"/>
+    <param name="tag_threads" value="2"/>
+    <param name="tag_decimate" value="1.0"/>
+    <param name="tag_blur" value="0.0"/>
+    <param name="tag_refine_edges" value="1"/>
+    <param name="tag_debug" value="0"/>
+    <param name="max_hamming_dist" value="2"/>
+    <param name="publish_tag_detections_image" value="true"/>
+    <rosparam param="tag_bundles">[]</rosparam>
+    <rosparam param="standalone_tags">
+      [
+        {id: 0, size: 0.144},
+        {id: 1, size: 0.144}
+      ]
+    </rosparam>
+    <remap from="image_rect" to="/xtion/rgb/image_rect_color"/>
+    <remap from="camera_info" to="/xtion/rgb/camera_info"/>
+  </node>
+
+  <!-- Door tag pose extractor -->
+  <node pkg="tiago_door_localization" type="door_tag_pose_node.py" name="door_tag_pose_node" output="screen">
+    <rosparam command="load" file="$(arg config)" subst_value="true"/>
+    <param name="publish_base" value="true"/>
+    <param name="max_age_s" value="0.2"/>
+  </node>
+
+  <!-- Door model from tag -->
+  <node pkg="tiago_door_localization" type="door_model_from_tag_node.py" name="door_model_from_tag_node" output="screen">
+    <rosparam command="load" file="$(arg config)" subst_value="true"/>
+    <param name="active_tag_id_topic" value="/door/tag_id"/>
+    <param name="forward_side" value="true"/>
+    <param name="forward_interaction" value="true"/>
+    <param name="side_topic_in" value="/door/door_side"/>
+    <param name="interaction_topic_in" value="/door/interaction"/>
+  </node>
+
+  <!-- Doorway from poses -->
+  <node pkg="tiago_door_localization" type="doorway_pose_node.py"
+        name="doorway_pose_node" output="screen">
+    <param name="hinge_topic" value="/door/hinge_pose_map"/>
+    <param name="handle_topic" value="/door/handle_pose_map"/>
+    <param name="out_topic" value="/door/doorway_pose_map"/>
+
+    <param name="max_age_s" value="0.5"/>
+    <param name="stability_window" value="10"/>
+    <param name="pos_std_thresh_m" value="0.02"/>
+    <param name="yaw_std_thresh_deg" value="2.0"/>
+
+    <param name="freeze_on_stable" value="true"/>
+    <param name="normal_offset_m" value="0.0"/>
+  </node>
+
+</launch>

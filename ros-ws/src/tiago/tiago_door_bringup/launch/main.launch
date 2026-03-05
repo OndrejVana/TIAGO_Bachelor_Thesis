@@ -1,0 +1,85 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Global Configuration -->
+  <arg name="simulation" default="true" doc="true = Gazebo sim, false = real robot"/>
+  <arg name="use_slam" default="true" doc="Enable SLAM for mapping and localization"/>
+  <arg name="use_door_perception" default="true" doc="Enable AprilTag-based door detection"/>
+  <arg name="use_navigation" default="true" doc="Enable navigation (move_base) control"/>
+  <arg name="use_behavior_tree" default="true" doc="Enable BT-based door navigation"/>
+  <arg name="use_vicon" default="false" doc="Enable VICON motion capture system"/>
+  <arg name="rviz" default="true" doc="Launch RViz for visualization"/>
+
+  
+  <!-- Simulation Configuration -->
+  <arg name="world_file" default="$(find tiago_door_sim)/worlds/small_office_with_door.world"/>
+  <arg name="robot" default="titanium" doc="Robot model: iron, steel, or titanium"/>
+  <arg name="arm" default="$(eval {'iron': False}.get(arg('robot'), True))"/>
+  <arg name="end_effector" default="$(eval {'iron': 'false', 'steel': 'pal-gripper', 'titanium': 'pal-hey5'}.get(arg('robot'), 'pal-gripper'))"/>
+  <arg name="laser_model" default="sick-571"/>
+  <arg name="camera_model" default="orbbec-astra"/>
+  <arg name="gui" default="true" doc="Show Gazebo GUI"/>
+  <arg name="gzpose" default="-x 0.0 -y 0.0 -z 0.0 -R 0.0 -P 0.0 -Y 0.0"/>
+
+  <!-- Door Perception Config -->
+  <arg name="door_config" default="$(find tiago_door_localization)/config/apriltag_two_sided_door.yaml"/>
+  
+  <!-- Navigation Configuration -->
+  <arg name="approach_cfg" default="$(find tiago_move_base_control)/config/door_approach.yaml"/>
+
+  <!-- Launch Components -->
+
+  <!-- 1. Simulation / Robot -->
+  <group if="$(arg simulation)">
+    <include file="$(find tiago_door_sim)/launch/sim_with_door.launch">
+      <arg name="world_file" value="$(arg world_file)"/>
+      <arg name="robot" value="$(arg robot)"/>
+      <arg name="arm" value="$(arg arm)"/>
+      <arg name="end_effector" value="$(arg end_effector)"/>
+      <arg name="laser_model" value="$(arg laser_model)"/>
+      <arg name="camera_model" value="$(arg camera_model)"/>
+      <arg name="gui" value="$(arg gui)"/>
+      <arg name="gzpose" value="$(arg gzpose)"/>
+    </include>
+  </group>
+
+  <!-- 2. SLAM System -->
+  <group if="$(arg use_slam)">
+    <include file="$(find tiago_slam)/launch/tiago_slam.launch"/>
+  </group>
+
+  <!-- 3. Door Perception -->
+  <group if="$(arg use_door_perception)">
+    <include file="$(find tiago_door_localization)/launch/door_preception_tags.launch">
+      <arg name="config" value="$(arg door_config)"/>
+    </include>
+  </group>
+
+  <!-- 4. Navigation Control -->
+  <group if="$(arg use_navigation)">
+    <include file="$(find tiago_move_base_control)/launch/door_nav.launch">
+      <arg name="approach_cfg" value="$(arg approach_cfg)"/>
+    </include>
+  </group>
+
+  <!-- 5. Behavior Tree -->
+  <group if="$(arg use_behavior_tree)">
+    <include file="$(find tiago_door_bt)/launch/door_bt.launch"/>
+  </group>
+
+  <!-- 6. VICON (Optional) -->
+  <group if="$(arg use_vicon)">
+    <include file="$(find tiago_vicon)/launch/tiago_vicon.launch"/>
+  </group>
+
+  <!-- 7. Visualization (RViz) -->
+  <group if="$(arg rviz)">
+    <node pkg="rviz" type="rviz" name="rviz" output="screen"
+          args="-d $(find tiago_door_bringup)/rviz/tiago_door_nav.rviz" />
+  </group>
+
+  <!-- Logging & Status -->
+  <node pkg="rostopic" type="rostopic" name="log_startup"
+        args="echo -p 'TIAGo Door Navigation System Started'" output="screen"
+        launch-prefix="bash -c 'sleep 3; '" />
+
+</launch>

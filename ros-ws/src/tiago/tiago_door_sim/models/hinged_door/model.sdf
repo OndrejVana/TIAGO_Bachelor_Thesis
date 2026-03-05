@@ -1,0 +1,194 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="hinged_door">
+    <static>false</static>
+
+    <self_collide>false</self_collide>
+
+    <!-- ===================== -->
+    <!-- Frame (hinge anchor)  -->
+    <!-- ===================== -->
+    <link name="frame">
+      <pose>0 0 1 0 0 0</pose>
+
+      <visual name="frame_visual">
+        <geometry>
+          <box><size>0.08 0.10 2.0</size></box>
+        </geometry>
+      </visual>
+
+      <collision name="frame_collision">
+        <geometry>
+          <box><size>0.08 0.10 2.0</size></box>
+        </geometry>
+      </collision>
+
+      <inertial>
+        <mass>20.0</mass>
+        <inertia>
+          <ixx>1.0</ixx><iyy>1.0</iyy><izz>1.0</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <joint name="frame_to_world" type="fixed">
+      <parent>world</parent>
+      <child>frame</child>
+    </joint>
+
+    <!-- ===================== -->
+    <!-- Door panel            -->
+    <!-- ===================== -->
+    <link name="door_panel">
+      <pose>0 0 1.0 0 0 0</pose>
+
+      <visual name="door_visual">
+        <pose>0.6 0 0 0 0 0</pose>
+        <geometry>
+          <box><size>1.2 0.06 2.0</size></box>
+        </geometry>
+      </visual>
+
+      <collision name="door_collision">
+        <pose>0.6 0 0 0 0 0</pose>
+        <geometry>
+          <box><size>1.2 0.06 2.0</size></box>
+        </geometry>
+
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.5</mu>
+              <mu2>0.5</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+
+      <inertial>
+        <pose>0.6 0 0 0 0 0</pose>
+        <mass>20.0</mass>
+        <inertia>
+          <ixx>2.0</ixx><iyy>2.0</iyy><izz>2.0</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <!-- ===================== -->
+    <!-- Hinge joint           -->
+    <!-- ===================== -->
+    <joint name="hinge" type="revolute">
+      <parent>frame</parent>
+      <child>door_panel</child>
+      <pose>0 0 0 0 0 0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1.57</lower>
+          <upper>0.0</upper>
+          <effort>200</effort>
+          <velocity>2.0</velocity>
+        </limit>
+        <dynamics>
+          <damping>0.05</damping>
+          <friction>0.0</friction>
+        </dynamics>
+      </axis>
+    </joint>
+
+    <!-- ===================== -->
+    <!-- Handles (both sides)  -->
+    <!-- ===================== -->
+
+    <!-- Front handle -->
+    <link name="handle_front">
+      <pose>1.15 0.045 1.0 0 1.5707963 0</pose>
+
+      <collision name="handle_front_collision">
+        <geometry>
+          <cylinder><radius>0.012</radius><length>0.12</length></cylinder>
+        </geometry>
+      </collision>
+
+      <visual name="handle_front_visual">
+        <geometry>
+          <cylinder><radius>0.012</radius><length>0.12</length></cylinder>
+        </geometry>
+      </visual>
+
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <joint name="handle_front_fixed" type="fixed">
+      <parent>door_panel</parent>
+      <child>handle_front</child>
+    </joint>
+
+    <!-- Back handle -->
+    <link name="handle_back">
+      <pose>1.15 -0.045 1.0 0 1.5707963 0</pose>
+
+      <collision name="handle_back_collision">
+        <geometry>
+          <cylinder><radius>0.012</radius><length>0.12</length></cylinder>
+        </geometry>
+      </collision>
+
+      <visual name="handle_back_visual">
+        <geometry>
+          <cylinder><radius>0.012</radius><length>0.12</length></cylinder>
+        </geometry>
+      </visual>
+
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <joint name="handle_back_fixed" type="fixed">
+      <parent>door_panel</parent>
+      <child>handle_back</child>
+    </joint>
+
+    <!-- ===================== -->
+    <!-- AprilTag plates (both)-->
+    <!-- ===================== -->
+
+    <!-- Tag on the front: apriltag_plate_0 -->
+    <include>
+      <uri>model://apriltag_plate_0</uri>
+      <pose>1.0 0.031 1.20 0 3.1415926 0</pose>
+      <name>tag_front_model</name>
+    </include>
+
+    <joint name="tag_front_fixed" type="fixed">
+      <parent>door_panel</parent>
+      <child>tag_front_model::tag_link</child>
+    </joint>
+
+    <!-- Tag on the back: apriltag_plate_1 -->
+    <include>
+      <uri>model://apriltag_plate_1</uri>
+      <pose>1.0 -0.031 1.20 0 0 0</pose>
+      <name>tag_back_model</name>
+    </include>
+
+    <joint name="tag_back_fixed" type="fixed">
+      <parent>door_panel</parent>
+      <child>tag_back_model::tag_link</child>
+    </joint>
+
+  </model>
+</sdf>

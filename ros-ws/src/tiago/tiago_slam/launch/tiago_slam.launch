@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+  <!-- RGB-D topics & frames -->
+  <arg name="rgb_topic"               default="/xtion/rgb/image_rect_color" />
+  <arg name="depth_topic"             default="/xtion/depth_registered/image_raw" />
+  <arg name="depth_camera_info_topic" default="/xtion/depth_registered/camera_info" />
+  <arg name="rgb_camera_info_topic"   default="/xtion/rgb/camera_info" />
+
+  <!-- 2D laser -->
+  <arg name="scan_topic" default="/depth_scan" />
+
+  <arg name="base_frame" default="base_footprint" />
+  <arg name="odom_frame" default="odom" /> <!-- odom_ekf -->
+  <arg name="map_frame"  default="map" />
+
+  <!-- RTAB-Map RGB-D ODOMETRY (visual odom) -->
+  <node name="rgbd_odometry" pkg="rtabmap_ros" type="rgbd_odometry" output="screen">
+
+    <param name="frame_id"      value="$(arg base_frame)" />
+    <param name="odom_frame_id" value="$(arg odom_frame)" />
+
+    <param name="subscribe_depth" value="true" />
+    <param name="subscribe_rgbd"  value="false" />
+
+    <remap from="rgb/image"       to="$(arg rgb_topic)" />
+    <remap from="depth/image"     to="$(arg depth_topic)" />
+    <remap from="rgb/camera_info" to="$(arg rgb_camera_info_topic)" />
+
+    <param name="subscribe_imu" value="true" />
+    <remap from="imu" to="/base_imu" />
+    
+    <!-- Remap odom output to namespaced topic -->
+    <remap from="odom" to="/rgbd_odometry/odom" />
+
+    <param name="approx_sync" value="true" />
+    <param name="queue_size" value="50" />
+    <param name="approx_sync_max_interval" value="0.05" />
+
+    <param name="Reg/Force3DoF" value="true" />
+    
+    <!-- More lenient feature requirements for challenging environments -->
+    <param name="Vis/MinInliers" value="12" />
+    <param name="Vis/InlierDistance" value="0.15" />
+
+    <!-- TF: odom -> base_footprint -->
+    <param name="publish_tf" value="true" />
+    <param name="tf_delay" value="0.01" />
+  </node>
+
+  <!-- RTAB-MAP (mapping / loop closure) Add 2D LaserScan for ICP constraints (stability) -->
+  <node name="rtabmap" pkg="rtabmap_ros" type="rtabmap" output="screen">
+
+    <param name="frame_id"      value="$(arg base_frame)" />
+    <param name="odom_frame_id" value="$(arg odom_frame)" />
+    <param name="map_frame_id"  value="$(arg map_frame)" />
+
+    <param name="subscribe_depth" value="true" />
+    <param name="subscribe_rgbd"  value="false" />
+    
+    <!-- Disable internal visual odometry, use external odometry -->
+    <param name="visual_odometry" value="false" />
+    
+    <!-- Subscribe to external odometry -->
+    <param name="subscribe_odom" value="true" />
+
+    <!-- ENABLE 2D scan -->
+    <param name="subscribe_scan"  value="true" />
+    <remap from="scan" to="$(arg scan_topic)" />
+
+    <remap from="rgb/image"       to="$(arg rgb_topic)" />
+    <remap from="depth/image"     to="$(arg depth_topic)" />
+    <remap from="rgb/camera_info" to="$(arg rgb_camera_info_topic)" />
+
+    <!-- Use external odometry -->
+    <remap from="odom" to="/rgbd_odometry/odom" />
+
+    <param name="subscribe_imu" value="true" />
+    <remap from="imu" to="/base_imu" />
+
+    <param name="approx_sync" value="true" />
+    <param name="queue_size" value="100" />
+    <param name="approx_sync_max_interval" value="0.05" />
+
+    <param name="RGBD/LinearUpdate" value="0.2" />
+    <param name="RGBD/AngularUpdate" value="0.15" />
+    <param name="Reg/Force3DoF" value="true" />
+
+    <!-- IMPORTANT: use ICP registration (LaserScan) for robustness -->
+    <param name="Reg/Strategy" value="1" />
+
+    <!-- Optional: constrain scan matching more on ground robot -->
+    <param name="Icp/VoxelSize" value="0.05" />
+    <param name="Icp/MaxCorrespondenceDistance" value="0.5" />
+    <param name="Icp/Iterations" value="10" />
+
+    <!-- 2D grid map from depth (ok to keep, but scan will help registration) -->
+    <param name="Grid/FromDepth" value="true" />
+    <param name="Grid/RangeMax"  value="8.0" />
+    <param name="Grid/CellSize"  value="0.05" />
+
+    <!-- Enable 3D point cloud map publishing -->
+    <param name="cloud_voxel_size" value="0.02" />
+    <param name="Cloud/OutputVoxelized" value="true" />
+    <param name="Grid/3D" value="false" />
+
+    <!-- TF: map -> odom -->
+    <param name="publish_tf"        value="true" />
+    <param name="tf_delay"          value="0.05" />
+    <param name="tf_publisher_rate" value="30.0" />
+  </node>
+
+
+<node name="slam_pose_publisher" pkg="tiago_slam" type="tf_to_pose.py" output="screen">
+    <param name="from_frame" value="$(arg map_frame)" />
+    <param name="to_frame"   value="$(arg base_frame)" />
+    <param name="output_topic" value="/slam_pose" />
+    <param name="rate" value="10.0" />
+  </node>
+
+  <node name="rtabmap_map_relay"
+        pkg="topic_tools"
+        type="relay"
+        args="/grid_map /map"
+        output="screen" />
+
+
+  <!-- Optional: RTABMap visualization (requires rtabmap_viz package) -->
+  <!-- Uncomment if you have rtabmap_viz installed -->
+  <!--
+  <node name="rtabmapviz" pkg="rtabmap_ros" type="rtabmap_viz" output="screen">
+    <param name="frame_id"        value="$(arg base_frame)" />
+    <param name="odom_frame_id"   value="$(arg odom_frame)" />
+    <param name="map_frame_id"    value="$(arg map_frame)" />
+
+    <param name="subscribe_depth" value="true" />
+    <param name="subscribe_rgbd"  value="false" />
+
+    <param name="subscribe_imu" value="true" />
+    <remap from="imu" to="/base_imu" />
+    <remap from="odom" to="/rgbd_odometry/odom" />
+
+    <param name="subscribe_scan" value="true" />
+    <remap from="scan" to="$(arg scan_topic)" />
+
+    <remap from="rgb/image"       to="$(arg rgb_topic)" />
+    <remap from="depth/image"     to="$(arg depth_topic)" />
+    <remap from="rgb/camera_info" to="$(arg rgb_camera_info_topic)" />
+
+    <param name="approx_sync" value="true" />
+    <param name="queue_size" value="100" />
+    <param name="approx_sync_max_interval" value="0.05" />
+
+    <remap from="mapData" to="/rtabmap/mapData" />
+  </node>
+  -->
+
+  <node name="depthimage_to_laserscan"
+        pkg="depthimage_to_laserscan"
+        type="depthimage_to_laserscan"
+        output="screen">
+    <remap from="image"       to="$(arg depth_topic)" />
+    <remap from="camera_info" to="$(arg depth_camera_info_topic)" />
+    <remap from="scan"        to="/depth_scan" />
+    <param name="output_frame_id" value="base_footprint" />
+    <param name="scan_height"     value="10" />
+    <param name="range_min"       value="0.3" />
+    <param name="range_max"       value="8.0" />
+  </node>
+
+</launch>

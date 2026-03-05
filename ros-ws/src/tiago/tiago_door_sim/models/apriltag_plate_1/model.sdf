@@ -1,0 +1,32 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="apriltag_plate_1">
+    <static>true</static>
+
+    <link name="tag_link">
+      <visual name="tag_visual">
+        <geometry>
+          <box>
+            <size>0.18 0.002 0.18</size>
+          </box>
+        </geometry>
+
+        <material>
+          <script>
+            <uri>model://apriltag_plate_1/materials/scripts</uri>
+            <uri>model://apriltag_plate_1/materials/textures</uri>
+            <name>Apriltag/Tag1</name>
+          </script>
+        </material>
+
+        <cast_shadows>false</cast_shadows>
+      </visual>
+
+      <collision name="tag_collision">
+        <geometry>
+          <box><size>0.18 0.002 0.18</size></box>
+        </geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>

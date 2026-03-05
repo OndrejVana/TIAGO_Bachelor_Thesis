@@ -1,0 +1,25 @@
+move_group_name: "arm"
+ee_link: "" # "arm_7_link"
+
+# Frames
+planning_frame: ""
+base_frame_fallback: "base_footprint"
+
+# Door topics
+handle_topic: "/door/handle_pose_map"
+
+# Default tolerances
+position_tolerance: 0.01
+orientation_tolerance: 0.05
+
+# Default scaling
+velocity_scaling: 0.2
+acceleration_scaling: 0.2
+
+# Door pregrasp defaults
+approach_distance: 0.12
+lateral_offset: 0.00
+vertical_offset: 0.00
+
+named_home: "home"
+named_stow: "stow"

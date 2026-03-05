@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>tiago_move_base_control</name>
+  <version>0.0.1</version>
+  <description>Simple move_base goal sender for TIAGo (ROS1 Melodic)</description>
+
+  <maintainer email="you@todo.todo">you</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>rospy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>actionlib</depend>
+  <depend>actionlib_msgs</depend>
+  <depend>move_base_msgs</depend>
+
+  <build_depend>costmap_2d</build_depend>
+  <build_depend>pluginlib</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>tf2</build_depend>
+
+  <exec_depend>costmap_2d</exec_depend>
+  <exec_depend>pluginlib</exec_depend>
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>tf2</exec_depend>
+
+  <export>
+    <costmap_2d plugin="${prefix}/plugin.xml" />
+  </export>
+</package>

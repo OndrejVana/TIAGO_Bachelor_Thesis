@@ -1,0 +1,98 @@
+FROM osrf/ros:melodic-desktop-full-bionic
+
+LABEL maintainer="Yue Erro <yue.erro@pal-robotics.com>"
+
+ARG REPO_WS=/tiago_public_ws
+RUN mkdir -p $REPO_WS/src
+WORKDIR $REPO_WS
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    apt-utils \
+    libv4l-dev \
+    libv4l2rds0 \
+    git \
+    wget \
+    vim \
+    locales \
+    dpkg \
+    ssh \
+    curl \
+    aptitude \
+    g++ \
+    gcc \
+    openvpn \
+    gnupg \
+    bash-completion \
+    vim-gnome \
+    nano \
+    psmisc \
+    ccache \
+    gdb \
+    qtcreator \
+    htop \
+    man \
+    meld \
+    silversearcher-ag \
+    terminator \
+    dbus-x11 \
+    tig \
+    tree \
+    valgrind \
+    iputils-ping \
+    ipython \
+    python-scipy \
+    python-wstool \
+    python-networkx \
+    python-pip  \
+    python3-vcstool \
+    python-rosinstall \
+    python-catkin-tools \
+    ros-melodic-robot-localization \
+    # ORB-SLAM2 / Pangolin deps
+    build-essential \
+    cmake \
+    libeigen3-dev \
+    libopencv-dev \
+    libglew-dev \
+    libboost-dev \
+    libpython2.7-dev \
+    ffmpeg \
+    libavcodec-dev \
+    libavutil-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libgtk2.0-dev \
+  && rm -rf /var/lib/apt/lists/* \
+  && wget https://raw.githubusercontent.com/pal-robotics/tiago_tutorials/melodic-devel/tiago_public-melodic.rosinstall \
+  && vcs import src < tiago_public-melodic.rosinstall
+
+ARG ROSDEP_IGNORE="opencv2 opencv2-nonfree pal_laser_filters speed_limit_node sensor_to_cloud hokuyo_node libdw-dev python-graphitesend-pip python-statsd pal_filters pal_vo_server pal_usb_utils pal_pcl pal_pcl_points_throttle_and_filter pal_karto pal_local_joint_control camera_calibration_files pal_startup_msgs pal-orbbec-openni2 dummy_actuators_manager pal_local_planner gravity_compensation_controller current_limit_controller dynamic_footprint dynamixel_cpp tf_lookup opencv3 omni_drive_controller pal_moveit_plugins pal_moveit_capabilities pal_loc_measure pal_map_manager ydlidar_ros_driver pal_motion_loader pal_navigation_msgs"
+
+RUN apt-get update && rosdep install --from-paths src --ignore-src -y --rosdistro melodic --skip-keys="${ROSDEP_IGNORE}"
+
+RUN apt-get update && apt-get install -y ros-melodic-rtabmap-ros ros-melodic-depthimage-to-laserscan ros-melodic-vrpn-client-ros
+
+RUN apt-get update && apt-get install -y \
+  ros-melodic-apriltag-ros \
+  ros-melodic-tf2-geometry-msgs \
+  ros-melodic-image-transport \
+  ros-melodic-cv-bridge \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    mesa-utils \
+    libqt5opengl5 \
+    qt5-default \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN bash -c "source /opt/ros/melodic/setup.bash \
+    && catkin build -DCATKIN_ENABLE_TESTING=0 -j 10 \
+    && echo 'source $REPO_WS/devel/setup.bash' >> ~/.bashrc"
+
+ENTRYPOINT []
+CMD ["/bin/bash","-l"]

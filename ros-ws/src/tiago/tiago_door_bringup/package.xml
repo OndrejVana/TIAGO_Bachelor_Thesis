@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>tiago_door_bringup</name>
+  <version>0.0.1</version>
+  <description>Main bringup package for TIAGo door navigation project</description>
+
+  <maintainer email="you@todo.todo">Your Name</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>roslaunch</depend>
+  <depend>roscpp</depend>
+  <depend>rospy</depend>
+  
+  <!-- Dependencies on other TIAGo packages -->
+  <depend>tiago_door_sim</depend>
+  <depend>tiago_door_localization</depend>
+  <depend>tiago_door_bt</depend>
+  <depend>tiago_move_base_control</depend>
+  <depend>tiago_vicon</depend>
+  <depend>tiago_slam</depend>
+
+  <export>
+    <build_type>catkin</build_type>
+  </export>
+</package>

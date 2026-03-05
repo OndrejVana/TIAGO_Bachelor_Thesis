@@ -1,0 +1,48 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Build artifacts
+build/
+devel/
+install/
+.catkin_workspace
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+log/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ROS specific
+*.bag
+*.orig
+
+# Docker files (don't copy these into the image)
+docker-compose.yml
+setup.sh

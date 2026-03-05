@@ -1,0 +1,83 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Core sim configuration -->
+  <arg name="world_file" default="$(find tiago_door_sim)/worlds/small_office_with_door.world"/>
+  <arg name="gui" default="true"/>
+  <arg name="paused" default="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="extra_gazebo_args" default=""/>
+
+  <!-- TIAGo configuration -->
+  <arg name="robot" default="titanium"/>
+  <arg name="arm" default="$(eval {'iron': False}.get(arg('robot'), True))"/>
+  <arg name="end_effector" default="$(eval {'iron': 'false', 'steel': 'pal-gripper', 'titanium': 'pal-hey5'}.get(arg('robot'), 'pal-gripper'))"/>
+  <arg name="ft_sensor" default="$(eval {'titanium': 'schunk-ft'}.get(arg('robot'), 'false'))"/>
+  <arg name="laser_model" default="sick-571"/>
+  <arg name="camera_model" default="orbbec-astra"/>
+  <arg name="base_type" default="pmb2"/>
+  <arg name="public_sim" default="false"/>
+  <arg name="tuck_arm" default="true"/>
+  <arg name="recording" default="false"/>
+  <arg name="use_moveit_camera" default="false"/>
+  <arg name="use_dynamic_footprint" default="false"/>
+  <arg name="advanced_grasping" default="false"/>
+  <arg name="slow_control_period" default="false"/>
+  <arg name="has_screen" default="false"/>
+  <arg name="multi" default=""/>
+  <arg name="gzpose" default="-x 0.0 -y 0.0 -z 0.0 -R 0.0 -P 0.0 -Y 0.0"/>
+
+  <env name="LC_NUMERIC" value="C"/>
+
+  <!-- Make Gazebo find custom door/tag models -->
+  <env name="GAZEBO_MODEL_PATH"
+       value="$(find tiago_door_sim)/models:$(optenv GAZEBO_MODEL_PATH)"/>
+
+  <!-- Use sim time -->
+  <param name="/use_sim_time" value="true"/>
+
+  <!-- Start Gazebo (world) -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world_file)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="extra_gazebo_args" value="$(arg extra_gazebo_args)"/>
+  </include>
+
+  <!-- Spawn TIAGo -->
+  <include file="$(find tiago_gazebo)/launch/tiago_spawn.launch">
+    <arg name="arm" value="$(arg arm)"/>
+    <arg name="end_effector" value="$(arg end_effector)"/>
+    <arg name="ft_sensor" value="$(arg ft_sensor)"/>
+    <arg name="laser_model" value="$(arg laser_model)"/>
+    <arg name="camera_model" value="$(arg camera_model)"/>
+    <arg name="multi" value="$(arg multi)"/>
+    <arg name="gzpose" value="$(arg gzpose)"/>
+    <arg name="base_type" value="$(arg base_type)"/>
+    <arg name="slow_control_period" value="$(arg slow_control_period)"/>
+    <arg name="has_screen" value="$(arg has_screen)"/>
+  </include>
+
+  <!-- Bringup (controllers) -->
+  <include file="$(find tiago_gazebo)/launch/simulation_tiago_bringup.launch">
+    <arg name="arm" value="$(arg arm)"/>
+    <arg name="end_effector" value="$(arg end_effector)"/>
+    <arg name="ft_sensor" value="$(arg ft_sensor)"/>
+    <arg name="laser_model" value="$(arg laser_model)"/>
+    <arg name="camera_model" value="$(arg camera_model)"/>
+    <arg name="public_sim" value="$(arg public_sim)"/>
+    <arg name="use_moveit_camera" value="$(arg use_moveit_camera)"/>
+    <arg name="use_dynamic_footprint" value="$(arg use_dynamic_footprint)"/>
+    <arg name="base_type" value="$(arg base_type)"/>
+    <arg name="advanced_grasping" value="$(arg advanced_grasping)" unless="$(arg public_sim)"/>
+  </include>
+
+  <!-- Optional: tuck arm -->
+  <group if="$(arg tuck_arm)">
+    <node name="tuck_arm" pkg="tiago_gazebo" type="tuck_arm.py" output="screen"/>
+  </group>
+
+  <!-- Keep consistent with tiago_gazebo.launch -->
+  <node name="image_proc" pkg="image_proc" type="image_proc" ns="xtion/rgb"/>
+</launch>

@@ -22,8 +22,7 @@ TIAGO_thesis/
 │           ├── tiago_slam/               -> SLAM implementations (slam_toolbox, RTAB-Map, ORB-SLAM)
 │           └── tiago_vicon/              -> VICON bridge, position logger, path record/replay
 │
-└── analysis/                             -> post-run analysis notebooks and utilities
-        README.md
+└── docs/                                 -> All documents connected to the work
 ```
 
 | README | Description |
@@ -39,4 +38,3 @@ TIAGO_thesis/
 | [tiago_arm_manipulation](ros-ws/src/tiago/tiago_arm_manipulation/README.md) | Arm services, gripper control, MoveIt parameters |
 | [tiago_slam](ros-ws/src/tiago/tiago_slam/README.md) | All SLAM modes, real robot usage, map saving |
 | [tiago_vicon](ros-ws/src/tiago/tiago_vicon/README.md) | VICON bridge, position logging, path replay |
-| [analysis/README.md](analysis/README.md) | Analysis notebooks, conda environment, utilities |

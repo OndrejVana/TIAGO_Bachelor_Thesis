@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+  <!-- Move base node with custom namespace -->
+  <group ns="tiago_move_base">
+    <node name="move_base" pkg="move_base" type="move_base" respawn="false" output="screen">
+
+      <!-- Remaps -->
+      <remap from="cmd_vel" to="/mobile_base_controller/cmd_vel"/>
+      <remap from="map" to="/map"/>
+
+      <!-- Planners -->
+      <param name="base_global_planner" value="navfn/NavfnROS" />
+      <param name="base_local_planner"  value="base_local_planner/TrajectoryPlannerROS" />
+
+      <rosparam param="NavfnROS">
+        allow_unknown: true
+        default_tolerance: 0.1
+      </rosparam>
+
+      <rosparam param="TrajectoryPlannerROS">
+        max_vel_x: 0.5
+        min_vel_x: 0.1
+        max_vel_theta: 1.0
+        min_in_place_vel_theta: 0.4
+        acc_lim_theta: 3.2
+        acc_lim_x: 2.5
+        acc_lim_y: 2.5
+        holonomic_robot: true
+      </rosparam>
+
+      <!-- ========================= -->
+      <!-- GLOBAL COSTMAP (STATIC)   -->
+      <!-- ========================= -->
+      <rosparam param="global_costmap">
+        global_frame: map
+        robot_base_frame: base_footprint
+        update_frequency: 2.0
+        publish_frequency: 1.0
+
+        # Use the saved /map (door likely closed in map)
+        static_map: true
+        rolling_window: false
+
+        resolution: 0.05
+
+        plugins:
+          - {name: static_layer, type: "costmap_2d::StaticLayer"}
+          - {name: door_mask,  type: "tiago_move_base_control/DoorMaskLayer"}
+          - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
+
+        static_layer:
+          map_topic: /map
+          subscribe_to_updates: false
+
+        # Door masking layer (toggle via /door_mask/enabled)
+        door_mask:
+          enabled: false
+          enabled_topic: "/door_mask/enabled"
+          door_pose_topic: "/door/doorway_pose_map"  # PoseStamped in map frame
+          width_m: 1.2
+          thickness_m: 0.5
+          margin_m: 0.2
+          set_unknown_instead_of_free: false
+
+        inflation_layer:
+          inflation_radius: 0.55
+          cost_scaling_factor: 10.0
+      </rosparam>
+
+      <!-- ========================= -->
+      <!-- LOCAL COSTMAP (ROLLING)  -->
+      <!-- ========================= -->
+      <rosparam param="local_costmap">
+        global_frame: odom
+        robot_base_frame: base_footprint
+        update_frequency: 5.0
+        publish_frequency: 2.0
+
+        static_map: false
+        rolling_window: true
+        width: 4.0
+        height: 4.0
+        resolution: 0.05
+
+        plugins:
+          - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
+          - {name: door_mask,  type: "tiago_move_base_control/DoorMaskLayer"}
+          - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
+
+        obstacle_layer:
+          observation_sources: depth_scan
+          depth_scan:
+            topic: /depth_scan
+            data_type: LaserScan
+            marking: true
+            clearing: true
+            obstacle_range: 8.0
+            raytrace_range: 8.0
+
+        # Also mask locally to ignore the swinging door near the robot
+        door_mask:
+          enabled: false
+          enabled_topic: "/door_mask/enabled"
+          door_pose_topic: "/door/doorway_pose_map"  # PoseStamped in map frame
+          width_m: 1.2
+          thickness_m: 0.5
+          margin_m: 0.2
+          set_unknown_instead_of_free: false
+
+        inflation_layer:
+          inflation_radius: 0.55
+          cost_scaling_factor: 10.0
+      </rosparam>
+
+      <!-- Robot footprint -->
+      <param name="footprint" value="[[-0.2, -0.2], [-0.2, 0.2], [0.2, 0.2], [0.2, -0.2]]"/>
+
+    </node>
+  </group>
+
+</launch>

@@ -1,0 +1,7 @@
+string name
+float64 velocity_scaling
+float64 acceleration_scaling
+bool execute
+---
+bool ok
+string message

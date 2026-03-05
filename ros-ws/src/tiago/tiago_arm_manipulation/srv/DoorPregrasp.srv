@@ -1,0 +1,12 @@
+bool use_latest_handle
+geometry_msgs/PoseStamped handle_override
+float64 approach_distance
+float64 lateral_offset
+float64 vertical_offset
+float64 velocity_scaling
+float64 acceleration_scaling
+bool execute
+---
+bool ok
+string message
+geometry_msgs/PoseStamped planned_target_base

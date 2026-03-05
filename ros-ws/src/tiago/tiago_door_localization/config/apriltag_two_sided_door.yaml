@@ -1,0 +1,72 @@
+# AprilTag detector config
+
+apriltag:
+  tag_family: "tag36h11"
+  tag_size_m: 0.18
+
+  # Two tags mounted on opposite sides of the door
+  tag_ids: [0, 1]
+  side_by_id:
+    "0": "front"
+    "1": "back"
+
+  # Define interaction type for planning
+  interaction_by_side:
+    front: "pull"
+    back: "push"
+
+  preferred_side: ""
+
+  switch_hysteresis_s: 0.5
+
+
+# Door model (per tag)
+models:
+
+  # FRONT TAG (ID = 0)
+  "0":
+    door_normal_axis_tag: "z"
+    hinge_axis_tag: "y"
+
+    hinge_offset_xyz:  [-1.0, 1.1, 0.0]
+    hinge_offset_rpy:  [0.0, 0.0, 0.0]
+
+    handle_offset_xyz: [0.1, 0.2, 0.10]
+    handle_offset_rpy:  [0.0, 0.0, 0.0]
+
+    door_width_m: 1.20
+    handle_radius_m: 1.15
+
+    publish_hinge_orientation: true
+
+  # BACK TAG (ID = 1)
+  "1":
+    door_normal_axis_tag: "z"
+    hinge_axis_tag: "y"
+
+    hinge_offset_xyz:  [-1.0, -1.1, 0.0]
+    hinge_offset_rpy:  [0.0, 0.0, 0.0]
+
+    handle_offset_xyz: [0.1, -0.2, 0.10]
+    handle_offset_rpy: [0.0, 0.0, 0.0]
+
+    door_width_m: 1.20
+    handle_radius_m: 1.15
+
+    publish_hinge_orientation: true
+
+# Topics
+topics:
+  tag_detections: "/tag_detections"
+  door_tag_pose_map: "/door/tag_pose_map"
+
+# Frames
+frames:
+  map: "map"
+  camera_frame_fallback: "camera_color_optical_frame"
+  base_link: "base_link"
+
+# TF settings
+tf:
+  publish_map: true
+  tf_timeout: 1.0

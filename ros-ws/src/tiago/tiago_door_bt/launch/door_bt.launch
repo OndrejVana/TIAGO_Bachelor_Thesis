@@ -1,0 +1,24 @@
+<launch>
+  <node pkg="tiago_door_bt" type="door_bt_executor.py"
+        name="tiago_door_bt_executor" output="screen">
+
+    <param name="plane_topic" value="/door/plane_map"/>
+    <param name="handle_topic" value="/door/handle_pose_map"/>
+    <param name="require_handle_pose" value="true"/>
+    <param name="pose_max_age_s" value="0.5"/>
+
+    <param name="generate_goal_topic" value="/tiago_move_base_control/generate_goal"/>
+
+    <!-- IMPORTANT: your move_base namespace -->
+    <param name="move_base_status_topic" value="/tiago_move_base/move_base/status"/>
+
+    <param name="nav_timeout_s" value="60.0"/>
+    <param name="nav_retries" value="3"/>
+
+    <!-- Door mask toggle + costmap clear -->
+    <param name="door_mask_enable_topic" value="/door_mask/enabled"/>
+    <param name="clear_costmaps_service" value="/tiago_move_base/move_base/clear_costmaps"/>
+
+    <param name="tick_hz" value="10.0"/>
+  </node>
+</launch>

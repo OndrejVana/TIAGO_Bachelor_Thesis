@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Position Logger Launch File -->
+  
+  <!-- Arguments -->
+  <arg name="vicon_topic" default="/vrpn_client_node/tiago/pose" />
+  <arg name="robot_pose_topic" default="/slam_pose" />  <!-- Generic SLAM pose - remap in SLAM launch file -->
+  <arg name="robot_odom_topic" default="/mobile_base_controller/odom" />
+  <arg name="use_odom" default="false" />  <!-- Set to true to use odometry instead of SLAM pose -->
+  <arg name="output_dir" default="$(find tiago_vicon)/position_logs" />
+  <arg name="log_rate" default="10.0" />  <!-- Hz -->
+  <arg name="vicon_msg_type" default="pose" />  <!-- 'pose' or 'transform' -->
+  
+  <!-- Position Logger Node -->
+  <node name="position_logger" pkg="tiago_vicon" type="position_logger.py" output="screen">
+    <param name="vicon_topic" value="$(arg vicon_topic)" />
+    <param name="vicon_msg_type" value="$(arg vicon_msg_type)" />
+    <param name="robot_pose_topic" value="$(arg robot_pose_topic)" />
+    <param name="robot_odom_topic" value="$(arg robot_odom_topic)" />
+    <param name="use_odom" value="$(arg use_odom)" />
+    <param name="output_dir" value="$(arg output_dir)" />
+    <param name="log_rate" value="$(arg log_rate)" />
+  </node>
+  
+</launch>

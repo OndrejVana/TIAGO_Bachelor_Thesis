@@ -1,0 +1,163 @@
+FROM osrf/ros:melodic-desktop-full-bionic
+
+LABEL maintainer="Your Name"
+LABEL description="TIAGo workspace with OpenCV 4.2 for ORB-SLAM3"
+
+ARG REPO_WS=/tiago_public_ws
+RUN mkdir -p $REPO_WS/src
+WORKDIR $REPO_WS
+
+# Install base dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    apt-utils \
+    libv4l-dev \
+    libv4l2rds0 \
+    git \
+    wget \
+    vim \
+    locales \
+    dpkg \
+    ssh \
+    curl \
+    aptitude \
+    g++ \
+    gcc \
+    openvpn \
+    gnupg \
+    bash-completion \
+    vim-gnome \
+    nano \
+    psmisc \
+    ccache \
+    gdb \
+    qtcreator \
+    htop \
+    man \
+    meld \
+    silversearcher-ag \
+    terminator \
+    dbus-x11 \
+    tig \
+    valgrind \
+    iputils-ping \
+    ipython \
+    python-scipy \
+    python-wstool \
+    python-networkx \
+    python-pip  \
+    python3-vcstool \
+    python-rosinstall \
+    python-catkin-tools \
+    ros-melodic-robot-localization \
+    # ORB-SLAM3 / Pangolin deps
+    build-essential \
+    cmake \
+    libeigen3-dev \
+    libglew-dev \
+    libboost-dev \
+    libpython2.7-dev \
+    ffmpeg \
+    libavcodec-dev \
+    libavutil-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libgtk2.0-dev \
+    # OpenCV 4 build dependencies
+    unzip \
+    pkg-config \
+    libtbb2 \
+    libtbb-dev \
+    libdc1394-22-dev \
+    libxvidcore-dev \
+    libx264-dev \
+    libatlas-base-dev \
+    gfortran \
+    # Pangolin dependencies
+    libepoxy-dev \
+    libwayland-dev \
+    libxkbcommon-dev \
+    wayland-protocols \
+  && rm -rf /var/lib/apt/lists/*
+
+# Upgrade CMake (Pangolin requires 3.16+)
+RUN cd /tmp && \
+    wget https://github.com/Kitware/CMake/releases/download/v3.22.1/cmake-3.22.1-linux-x86_64.sh && \
+    chmod +x cmake-3.22.1-linux-x86_64.sh && \
+    ./cmake-3.22.1-linux-x86_64.sh --skip-license --prefix=/usr/local && \
+    rm cmake-3.22.1-linux-x86_64.sh && \
+    cmake --version
+
+# Build and install Pangolin (visualization for ORB-SLAM)
+# Use v0.6 which is more compatible with GCC 7.5
+RUN cd /tmp && \
+    git clone --branch v0.6 https://github.com/stevenlovegrove/Pangolin.git && \
+    cd Pangolin && \
+    mkdir build && cd build && \
+    cmake -DCPP11_NO_BOOST=ON .. && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/Pangolin
+
+# Build and install OpenCV 4.2.0
+RUN cd /tmp && \
+    wget -O opencv.zip https://github.com/opencv/opencv/archive/4.2.0.zip && \
+    wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/4.2.0.zip && \
+    unzip opencv.zip && \
+    unzip opencv_contrib.zip && \
+    cd opencv-4.2.0 && \
+    mkdir build && cd build && \
+    cmake -D CMAKE_BUILD_TYPE=RELEASE \
+          -D CMAKE_INSTALL_PREFIX=/usr/local \
+          -D INSTALL_C_EXAMPLES=OFF \
+          -D INSTALL_PYTHON_EXAMPLES=OFF \
+          -D OPENCV_EXTRA_MODULES_PATH=/tmp/opencv_contrib-4.2.0/modules \
+          -D BUILD_EXAMPLES=OFF \
+          -D BUILD_opencv_python2=ON \
+          -D BUILD_opencv_python3=OFF \
+          -D WITH_TBB=ON \
+          -D WITH_V4L=ON \
+          -D WITH_QT=OFF \
+          -D WITH_OPENGL=ON .. && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    cd / && rm -rf /tmp/opencv* 
+
+# Install Python 2.7 boost for cv_bridge
+RUN apt-get update && apt-get install -y libboost-python-dev && rm -rf /var/lib/apt/lists/*
+
+    # Rebuild cv_bridge and image_geometry against OpenCV 4.2 (patch melodic branch for OpenCV 4)
+RUN cd $REPO_WS/src && \
+    git clone -b melodic https://github.com/ros-perception/vision_opencv.git && \
+    sed -i 's/find_package(OpenCV 3 REQUIRED/find_package(OpenCV 4 REQUIRED/g' vision_opencv/cv_bridge/CMakeLists.txt && \
+    sed -i 's/CV_LOAD_IMAGE_COLOR/cv::IMREAD_COLOR/g' vision_opencv/cv_bridge/src/cv_bridge.cpp && \
+    sed -i 's/CV_LOAD_IMAGE_GRAYSCALE/cv::IMREAD_GRAYSCALE/g' vision_opencv/cv_bridge/src/cv_bridge.cpp && \
+    sed -i 's/CV_LOAD_IMAGE_UNCHANGED/cv::IMREAD_UNCHANGED/g' vision_opencv/cv_bridge/src/cv_bridge.cpp && \
+    sed -i 's/CV_LOAD_IMAGE_ANYDEPTH/cv::IMREAD_ANYDEPTH/g' vision_opencv/cv_bridge/src/cv_bridge.cpp && \
+    sed -i 's/CV_LOAD_IMAGE_ANYCOLOR/cv::IMREAD_ANYCOLOR/g' vision_opencv/cv_bridge/src/cv_bridge.cpp && \
+    rm vision_opencv/cv_bridge/src/module_opencv2.cpp && \
+    python -c "import re; f=open('vision_opencv/cv_bridge/src/CMakeLists.txt','r'); content=f.read(); f.close(); content=re.sub(r'module_opencv2\.cpp','',content); content=re.sub(r'add_library\(cv_bridge_boost[^)]*\)','',content,flags=re.DOTALL); content=re.sub(r'target_link_libraries\(cv_bridge_boost[^)]*\)','',content,flags=re.DOTALL); content=re.sub(r'install\(TARGETS cv_bridge_boost[^)]*\)','',content,flags=re.DOTALL); content=re.sub(r'\n\n+',r'\n\n',content); f=open('vision_opencv/cv_bridge/src/CMakeLists.txt','w'); f.write(content); f.close()" && \
+    cd $REPO_WS && \
+    bash -c "source /opt/ros/melodic/setup.bash && \
+             catkin build cv_bridge image_geometry -DCMAKE_BUILD_TYPE=Release -DOpenCV_DIR=/usr/local/lib/cmake/opencv4"
+
+# Import TIAGo repositories
+RUN wget https://raw.githubusercontent.com/pal-robotics/tiago_tutorials/melodic-devel/tiago_public-melodic.rosinstall \
+  && vcs import src < tiago_public-melodic.rosinstall
+
+ARG ROSDEP_IGNORE="opencv2 opencv2-nonfree pal_laser_filters speed_limit_node sensor_to_cloud hokuyo_node libdw-dev python-graphitesend-pip python-statsd pal_filters pal_vo_server pal_usb_utils pal_pcl pal_pcl_points_throttle_and_filter pal_karto pal_local_joint_control camera_calibration_files pal_startup_msgs pal-orbbec-openni2 dummy_actuators_manager pal_local_planner gravity_compensation_controller current_limit_controller dynamic_footprint dynamixel_cpp tf_lookup opencv3 libopencv-dev omni_drive_controller pal_moveit_plugins pal_moveit_capabilities pal_loc_measure pal_map_manager ydlidar_ros_driver pal_motion_loader pal_navigation_msgs"
+
+RUN apt-get update && rosdep install --from-paths src --ignore-src -y --rosdistro melodic --skip-keys="${ROSDEP_IGNORE}"
+
+RUN apt-get update && apt-get install -y ros-melodic-rtabmap-ros ros-melodic-depthimage-to-laserscan ros-melodic-vrpn-client-ros
+
+    # Build workspace (blacklist ORB-SLAM2 and OpenCV 3.x dependent packages)
+RUN bash -c "source /opt/ros/melodic/setup.bash \
+    && catkin config --blacklist orb_slam_2_ros tiago_orb_slam aruco_ros tiago_aruco_demo tiago_opencv_tutorial look_to_point tiago_pick_demo \
+    && catkin build -DCATKIN_ENABLE_TESTING=0 -j 10 \
+    && echo 'source $REPO_WS/devel/setup.bash' >> ~/.bashrc \
+    && echo 'export OpenCV_DIR=/usr/local/lib/cmake/opencv4' >> ~/.bashrc"ENTRYPOINT []
+CMD ["/bin/bash","-l"]
