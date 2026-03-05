@@ -1,0 +1,9 @@
+[submodule "ros-ws/src/tiago/orb_slam3_ros"]
+	path = ros-ws/src/tiago/external/orb_slam3_ros
+	url = https://github.com/thien94/orb_slam3_ros.git
+[submodule "ros-ws/src/tiago/orb_slam_2_ros"]
+	path = ros-ws/src/tiago/external/orb_slam_2_ros
+	url = https://github.com/appliedAI-Initiative/orb_slam_2_ros.git
+[submodule "ros-ws/src/tiago/external/darknet_ros"]
+	path = ros-ws/src/tiago/external/darknet_ros
+	url = https://github.com/leggedrobotics/darknet_ros.git
