@@ -31,7 +31,6 @@ class MoveBaseGoalSender(object):
             rospy.loginfo("Connected to move_base action server: %s", self.action_name)
 
         self.pub_status = rospy.Publisher("~status", GoalStatusArray, queue_size=10)
-        # move_base publishes status on <action_name>/status
         self.sub_status = rospy.Subscriber(self.action_name + "/status", GoalStatusArray, self._status_cb, queue_size=10)
 
         self.sub_goal = rospy.Subscriber(self.goal_topic, PoseStamped, self._goal_cb, queue_size=10)

@@ -13,6 +13,7 @@ from bt_nodes import (
     PublishBoolOnce,
     CallEmptyServiceOnce,
     CallSetBoolServiceOnce,
+    DelaySeconds,
 )
 
 def make_tree(params):
@@ -30,30 +31,34 @@ def make_tree(params):
         children=children_ready,
     )
 
-    # Phase 2: Navigate to pregrasp
-    trigger_goal = PublishEmptyOnce(
-        name="TriggerPregraspGoal",
-        topic=params["generate_goal_topic"],
-        blackboard_key_stamp="last_trigger_stamp",
-    )
+    # Phase 2: Navigate to pregrasp (with retries via Selector)
+    nav_attempts = []
+    for i in range(params["nav_retries"]):
+        trigger_goal = PublishEmptyOnce(
+            name="TriggerPregraspGoal_{}".format(i+1),
+            topic=params["generate_goal_topic"],
+            blackboard_key_stamp="last_trigger_stamp_{}".format(i+1),
+        )
 
-    wait_nav = WaitForMoveBaseResult(
-        name="WaitForMoveBase",
-        status_topic=params["move_base_status_topic"],
-        timeout_s=params["nav_timeout_s"],
-        blackboard_key_stamp="last_trigger_stamp",
-    )
+        wait_nav = WaitForMoveBaseResult(
+            name="WaitForMoveBase_{}".format(i+1),
+            status_topic=params["move_base_status_topic"],
+            timeout_s=params["nav_timeout_s"],
+            blackboard_key_stamp="last_trigger_stamp_{}".format(i+1),
+        )
 
-    nav_sequence = py_trees.composites.Sequence(
-        name="NavigateToPregrasp",
-        memory=True,
-        children=[trigger_goal, wait_nav],
-    )
+        nav_sequence = py_trees.composites.Sequence(
+            name="NavigateToPregrasp_{}".format(i+1),
+            memory=True,
+            children=[trigger_goal, wait_nav],
+        )
+        nav_attempts.append(nav_sequence)
 
-    nav_retry = py_trees.decorators.Retry(
+    # Selector tries each attempt until one succeeds
+    nav_retry = py_trees.composites.Selector(
         name="RetryNavigation",
-        child=nav_sequence,
-        num_failures=params["nav_retries"],
+        memory=False,
+        children=nav_attempts,
     )
 
     # Phase 3: Prep for door interaction (mask + clear)
@@ -87,6 +92,9 @@ def make_tree(params):
     # Phase 5: Go through door (placeholder)
     go_through = py_trees.behaviours.Success(name="GoThroughPlaceholder")
 
+    # Delay to observe door mask effect (for debugging/visualization)
+    observe_mask = DelaySeconds("ObserveDoorMask", duration_s=5.0)
+
     # Phase 6: Restore (mask off + clear)
     disable_mask = PublishBoolOnce("DisableDoorMask", params["door_mask_enable_topic"], False)
 
@@ -110,8 +118,10 @@ def make_tree(params):
             door_model_ready,
             nav_retry,
             prep_door,
+            freeze_srv,
             open_door,
             go_through,
+            observe_mask,
             restore,
         ],
     )
@@ -141,13 +151,73 @@ def main():
         "tick_hz": float(rospy.get_param("~tick_hz", 10.0)),
     }
 
+    rospy.loginfo("=" * 60)
+    rospy.loginfo("TIAGo Door BT Executor Starting")
+    rospy.loginfo("=" * 60)
+    rospy.loginfo("Waiting for door poses on:")
+    rospy.loginfo("  - Plane: %s", params["plane_topic"])
+    if params["require_handle_pose"]:
+        rospy.loginfo("  - Handle: %s (REQUIRED)", params["handle_topic"])
+    rospy.loginfo("Navigation retries: %d (timeout: %.1fs)", params["nav_retries"], params["nav_timeout_s"])
+    rospy.loginfo("Tick rate: %.1f Hz", params["tick_hz"])
+    rospy.loginfo("=" * 60)
+
     tree = make_tree(params)
     tree.setup(timeout=2.0)
 
+    # Track previous status to detect changes
+    previous_status = {}
+    
+    def log_status_changes(tree_node):
+        """Recursively log when nodes change status"""
+        node_name = tree_node.name
+        current_status = tree_node.status
+        
+        if node_name not in previous_status or previous_status[node_name] != current_status:
+            if current_status == py_trees.common.Status.RUNNING:
+                rospy.loginfo("[BT] >>> %s: RUNNING", node_name)
+            elif current_status == py_trees.common.Status.SUCCESS:
+                rospy.loginfo("[BT] ✓ %s: SUCCESS", node_name)
+            elif current_status == py_trees.common.Status.FAILURE:
+                rospy.logwarn("[BT] ✗ %s: FAILURE", node_name)
+            previous_status[node_name] = current_status
+        
+        # Recursively check children
+        if hasattr(tree_node, 'children'):
+            for child in tree_node.children:
+                log_status_changes(child)
+
+    rospy.loginfo("[BT] Behavior tree initialized. Starting execution...")
+    
     rate = rospy.Rate(params["tick_hz"])
+    tick_count = 0
+    mission_complete = False
+    
     while not rospy.is_shutdown():
         tree.tick_once()
+        log_status_changes(tree)
+        
+        # Check if mission completed successfully
+        if tree.status == py_trees.common.Status.SUCCESS and not mission_complete:
+            mission_complete = True
+            rospy.loginfo("=" * 60)
+            rospy.loginfo("[BT] *** MISSION COMPLETED SUCCESSFULLY ***")
+            rospy.loginfo("=" * 60)
+            break
+        elif tree.status == py_trees.common.Status.FAILURE:
+            rospy.logerr("=" * 60)
+            rospy.logerr("[BT] *** MISSION FAILED ***")
+            rospy.logerr("=" * 60)
+            break
+        
+        # Log periodic heartbeat every 5 seconds
+        tick_count += 1
+        if tick_count % int(params["tick_hz"] * 5) == 0:
+            rospy.loginfo("[BT] Heartbeat - Tree status: %s", tree.status)
+        
         rate.sleep()
+    
+    rospy.loginfo("[BT] Behavior tree executor shutting down.")
 
 if __name__ == "__main__":
     main()

@@ -25,6 +25,7 @@ class DoorApproachGoalGenerator(object):
         self.use_handle_as_target = bool(rospy.get_param("~use_handle_as_target", True))
         self.face_door = bool(rospy.get_param("~face_door", True))
         self.normal_sign = int(rospy.get_param("~normal_sign", -1))
+        self.normal_axis = rospy.get_param("~normal_axis", "z")  # 'x', 'y', or 'z'
         self.min_update_period_s = float(rospy.get_param("~min_update_period_s", 0.5))
         self.continuous = bool(rospy.get_param("~continuous", False))
         self.min_normal_norm = float(rospy.get_param("~min_normal_norm", 1e-6))
@@ -101,18 +102,40 @@ class DoorApproachGoalGenerator(object):
             self.pub_dbg.publish(String(data="frame_mismatch plane=%s target=%s" % (frame_plane, frame_target)))
             return
 
-        x_axis, y_axis, n = self._extract_axes_from_pose(plane.pose)
+        x_axis, y_axis, z_axis = self._extract_axes_from_pose(plane.pose)
+        
+        if self.normal_axis == "x":
+            n = x_axis
+            lateral_axis = y_axis
+        elif self.normal_axis == "y":
+            n = y_axis
+            lateral_axis = x_axis
+        else:  # "z" or default
+            n = z_axis
+            lateral_axis = x_axis
+        
         n_norm = np.linalg.norm(n)
         if n_norm < self.min_normal_norm:
             self.pub_dbg.publish(String(data="normal_invalid"))
             return
         n = n / n_norm
 
-        x_axis = x_axis / max(1e-12, np.linalg.norm(x_axis))
+        lateral_axis = lateral_axis / max(1e-12, np.linalg.norm(lateral_axis))
 
         p_t = np.array([target.pose.position.x, target.pose.position.y, target.pose.position.z], dtype=np.float64)
+        
+        rospy.loginfo("Door axes - X: [%.3f, %.3f, %.3f], Y: [%.3f, %.3f, %.3f], Z: [%.3f, %.3f, %.3f]",
+                     x_axis[0], x_axis[1], x_axis[2],
+                     y_axis[0], y_axis[1], y_axis[2],
+                     z_axis[0], z_axis[1], z_axis[2])
+        rospy.loginfo("Using '%s' axis as normal: [%.3f, %.3f, %.3f]",
+                     self.normal_axis, n[0], n[1], n[2])
 
-        p_goal = p_t + float(self.normal_sign) * self.stand_off_m * n + self.lateral_offset_m * x_axis
+        p_goal = p_t + float(self.normal_sign) * self.stand_off_m * n + self.lateral_offset_m * lateral_axis
+        
+        rospy.loginfo("Target position: [%.3f, %.3f, %.3f]", p_t[0], p_t[1], p_t[2])
+        rospy.loginfo("Computed goal position: [%.3f, %.3f, %.3f] (offset: %.3fm along normal)",
+                     p_goal[0], p_goal[1], p_goal[2], float(self.normal_sign) * self.stand_off_m)
 
         p_goal[2] = 0.0
 
@@ -148,6 +171,14 @@ class DoorApproachGoalGenerator(object):
 
         self.pub_goal.publish(goal)
         self.last_pub_time = now
+
+        rospy.loginfo(
+            "Door approach goal generated: pos=(%.2f, %.2f, %.2f) yaw=%.2f° | "
+            "stand_off=%.2fm lateral=%.2fm normal_sign=%d use_handle=%s",
+            p_goal[0], p_goal[1], p_goal[2], math.degrees(yaw),
+            self.stand_off_m, self.lateral_offset_m, self.normal_sign,
+            str(self.use_handle_as_target)
+        )
 
         self.pub_dbg.publish(String(
             data="published goal (stand_off=%.2f lateral=%.2f use_handle=%s)" %

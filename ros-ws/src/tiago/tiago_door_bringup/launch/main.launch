@@ -5,6 +5,8 @@
   <arg name="use_slam" default="true" doc="Enable SLAM for mapping and localization"/>
   <arg name="use_door_perception" default="true" doc="Enable AprilTag-based door detection"/>
   <arg name="use_navigation" default="true" doc="Enable navigation (move_base) control"/>
+  <arg name="use_door_planning" default="true" doc="Enable door-opening trajectory planning"/>
+  <arg name="use_arm_manipulation" default="true" doc="Enable arm motion planning and gripper control"/>
   <arg name="use_behavior_tree" default="true" doc="Enable BT-based door navigation"/>
   <arg name="use_vicon" default="false" doc="Enable VICON motion capture system"/>
   <arg name="rviz" default="true" doc="Launch RViz for visualization"/>
@@ -61,17 +63,27 @@
     </include>
   </group>
 
-  <!-- 5. Behavior Tree -->
+  <!-- 5. Door Planning -->
+  <group if="$(arg use_door_planning)">
+    <include file="$(find tiago_door_planning)/launch/door_planning.launch"/>
+  </group>
+
+  <!-- 6. Arm Manipulation -->
+  <group if="$(arg use_arm_manipulation)">
+    <include file="$(find tiago_arm_manipulation)/launch/arm_manipulation.launch"/>
+  </group>
+
+  <!-- 7. Behavior Tree -->
   <group if="$(arg use_behavior_tree)">
     <include file="$(find tiago_door_bt)/launch/door_bt.launch"/>
   </group>
 
-  <!-- 6. VICON (Optional) -->
+  <!-- 8. VICON (Optional) -->
   <group if="$(arg use_vicon)">
     <include file="$(find tiago_vicon)/launch/tiago_vicon.launch"/>
   </group>
 
-  <!-- 7. Visualization (RViz) -->
+  <!-- 9. Visualization (RViz) -->
   <group if="$(arg rviz)">
     <node pkg="rviz" type="rviz" name="rviz" output="screen"
           args="-d $(find tiago_door_bringup)/rviz/tiago_door_nav.rviz" />

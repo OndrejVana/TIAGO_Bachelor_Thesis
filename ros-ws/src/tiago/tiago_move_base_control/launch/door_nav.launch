@@ -1,6 +1,8 @@
 <launch>
   <arg name="approach_cfg" default="$(find tiago_move_base_control)/config/door_approach.yaml"/>
 
+  <include file="$(find tiago_move_base_control)/launch/tiago_move_base.launch"/>
+
   <include file="$(find tiago_move_base_control)/launch/move_base_control.launch"/>
 
   <node pkg="tiago_move_base_control" type="door_approach_goal_generator_node.py"
