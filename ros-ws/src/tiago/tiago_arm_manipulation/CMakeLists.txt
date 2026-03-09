@@ -40,6 +40,5 @@ catkin_package(
 
 catkin_install_python(PROGRAMS
   scripts/arm_manipulation_node.py
-  scripts/test_calls.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

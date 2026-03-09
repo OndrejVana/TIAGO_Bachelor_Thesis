@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <sdf version="1.6">
-  <model name="hinged_door">
+  <model name="hinged_door_left">
     <static>false</static>
 
     <self_collide>false</self_collide>
@@ -13,13 +13,13 @@
 
       <visual name="frame_visual">
         <geometry>
-          <box><size>0.08 0.10 2.0</size></box>
+          <box><size>-0.08 0.10 2.0</size></box>
         </geometry>
       </visual>
 
       <collision name="frame_collision">
         <geometry>
-          <box><size>0.08 0.10 2.0</size></box>
+          <box><size>-0.08 0.10 2.0</size></box>
         </geometry>
       </collision>
 
@@ -44,16 +44,16 @@
       <pose>0 0 1.0 0 0 0</pose>
 
       <visual name="door_visual">
-        <pose>0.6 0 0 0 0 0</pose>
+        <pose>-0.45 0 0 0 0 0</pose>
         <geometry>
-          <box><size>1.2 0.06 2.0</size></box>
+          <box><size>-0.9 0.06 2.0</size></box>
         </geometry>
       </visual>
 
       <collision name="door_collision">
-        <pose>0.6 0 0 0 0 0</pose>
+        <pose>-0.45 0 0 0 0 0</pose>
         <geometry>
-          <box><size>1.2 0.06 2.0</size></box>
+          <box><size>-0.9 0.06 2.0</size></box>
         </geometry>
 
         <surface>
@@ -67,7 +67,7 @@
       </collision>
 
       <inertial>
-        <pose>0.6 0 0 0 0 0</pose>
+        <pose>-0.45 0 0 0 0 0</pose>
         <mass>20.0</mass>
         <inertia>
           <ixx>2.0</ixx><iyy>2.0</iyy><izz>2.0</izz>
@@ -104,17 +104,17 @@
 
     <!-- Front handle -->
     <link name="handle_front">
-      <pose>1.15 0.045 1.0 0 1.5707963 0</pose>
+      <pose>-0.75 0.045 1.050 0 1.5707963 0</pose>
 
       <collision name="handle_front_collision">
         <geometry>
-          <cylinder><radius>0.012</radius><length>0.12</length></cylinder>
+          <cylinder><radius>0.012</radius><length>-0.12</length></cylinder>
         </geometry>
       </collision>
 
       <visual name="handle_front_visual">
         <geometry>
-          <cylinder><radius>0.012</radius><length>0.12</length></cylinder>
+          <cylinder><radius>0.012</radius><length>-0.12</length></cylinder>
         </geometry>
       </visual>
 
@@ -134,17 +134,17 @@
 
     <!-- Back handle -->
     <link name="handle_back">
-      <pose>1.15 -0.045 1.0 0 1.5707963 0</pose>
+      <pose>-0.75 -0.045 1.050 0 1.5707963 0</pose>
 
       <collision name="handle_back_collision">
         <geometry>
-          <cylinder><radius>0.012</radius><length>0.12</length></cylinder>
+          <cylinder><radius>0.012</radius><length>-0.12</length></cylinder>
         </geometry>
       </collision>
 
       <visual name="handle_back_visual">
         <geometry>
-          <cylinder><radius>0.012</radius><length>0.12</length></cylinder>
+          <cylinder><radius>0.012</radius><length>-0.12</length></cylinder>
         </geometry>
       </visual>
 
@@ -168,8 +168,8 @@
 
     <!-- Tag on the front: apriltag_plate_0 -->
     <include>
-      <uri>model://apriltag_plate_0</uri>
-      <pose>1.0 0.031 1.20 0 3.1415926 0</pose>
+      <uri>model://apriltag_plate_2</uri>
+      <pose>-0.75 0.031 1.20 0 3.1415926 0</pose>
       <name>tag_front_model</name>
     </include>
 
@@ -180,14 +180,46 @@
 
     <!-- Tag on the back: apriltag_plate_1 -->
     <include>
-      <uri>model://apriltag_plate_1</uri>
-      <pose>1.0 -0.031 1.20 0 0 0</pose>
+      <uri>model://apriltag_plate_3</uri>
+      <pose>-0.75 -0.031 1.20 0 0 0</pose>
       <name>tag_back_model</name>
     </include>
 
     <joint name="tag_back_fixed" type="fixed">
       <parent>door_panel</parent>
       <child>tag_back_model::tag_link</child>
+    </joint>
+
+    <!-- ===================== -->
+    <!-- Second Frame (far end)-->
+    <!-- ===================== -->
+    <link name="frame_far">
+      <pose>-0.97 0 1 0 0 0</pose>
+
+      <visual name="frame_far_visual">
+        <geometry>
+          <box><size>-0.08 0.10 2.0</size></box>
+        </geometry>
+      </visual>
+
+      <collision name="frame_far_collision">
+        <geometry>
+          <box><size>-0.08 0.10 2.0</size></box>
+        </geometry>
+      </collision>
+
+      <inertial>
+        <mass>20.0</mass>
+        <inertia>
+          <ixx>1.0</ixx><iyy>1.0</iyy><izz>1.0</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <joint name="frame_far_to_world" type="fixed">
+      <parent>world</parent>
+      <child>frame_far</child>
     </joint>
 
   </model>

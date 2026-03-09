@@ -38,7 +38,7 @@ roslaunch tiago_door_bringup main.launch gui:=false
 cd /path/to/ros-ws
 
 # Optional: exclude packages you don't need
-catkin config --blacklist darknet_ros_msgs darknet_ros
+catkin config --blacklist darknet_ros_msgs darknet_ros orb_slam2_ros orb_slam3_ros
 
 catkin build
 source devel/setup.bash

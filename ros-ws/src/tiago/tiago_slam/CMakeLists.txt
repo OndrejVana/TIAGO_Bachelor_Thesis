@@ -132,7 +132,6 @@ add_definitions(${PCL_DEFINITIONS})
 catkin_install_python(
   PROGRAMS
     scripts/laser_processor.py
-    scripts/slam_controller.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
