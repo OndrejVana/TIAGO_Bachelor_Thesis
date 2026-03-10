@@ -13,6 +13,7 @@ from std_msgs.msg import Bool
 import rosservice
 from std_srvs.srv import Empty as EmptySrv
 from std_srvs.srv import SetBool
+from std_srvs.srv import Trigger
 
 
 # actionlib_msgs/GoalStatus values:
@@ -287,4 +288,102 @@ class DelaySeconds(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.SUCCESS
         else:
             return py_trees.common.Status.RUNNING
+
+
+class CallTriggerServiceOnce(py_trees.behaviour.Behaviour):
+    """
+    Call a std_srvs/Trigger service once and return SUCCESS/FAILURE based on response.
+    """
+    
+    def __init__(self, name, service_name, timeout_s=2.0):
+        super(CallTriggerServiceOnce, self).__init__(name=name)
+        self.service_name = service_name
+        self.timeout_s = float(timeout_s)
+        self.called = False
+        self.proxy = None
+
+    def setup(self, timeout):
+        self.proxy = rospy.ServiceProxy(self.service_name, Trigger)
+        return True
+
+    def initialise(self):
+        self.called = False
+
+    def update(self):
+        if self.called:
+            return py_trees.common.Status.SUCCESS
+        try:
+            rospy.loginfo("  [%s] Calling service %s", self.name, self.service_name)
+            rospy.wait_for_service(self.service_name, timeout=self.timeout_s)
+            resp = self.proxy()
+            self.called = True
+            if resp.success:
+                rospy.loginfo("  [%s] Service call succeeded: %s", self.name, resp.message)
+                return py_trees.common.Status.SUCCESS
+            else:
+                rospy.logwarn("  [%s] Service returned failure: %s", self.name, resp.message)
+                return py_trees.common.Status.FAILURE
+        except Exception as e:
+            rospy.logwarn("  [%s] Service call failed: %s", self.name, str(e))
+            return py_trees.common.Status.FAILURE
+
+
+class CallDoorPregraspOnce(py_trees.behaviour.Behaviour):
+    """
+    Call tiago_arm_manipulation/door_pregrasp service once to move arm to pregrasp position.
+    Uses latest detected handle pose.
+    """
+    
+    def __init__(self, name, service_name="/tiago_arm_manipulation/door_pregrasp", 
+                 execute=True, approach_distance=0.12, timeout_s=30.0):
+        super(CallDoorPregraspOnce, self).__init__(name=name)
+        self.service_name = service_name
+        self.execute = execute
+        self.approach_distance = approach_distance
+        self.timeout_s = float(timeout_s)
+        self.called = False
+        self.proxy = None
+
+    def setup(self, timeout):
+        from tiago_arm_manipulation.srv import DoorPregrasp
+        self.proxy = rospy.ServiceProxy(self.service_name, DoorPregrasp)
+        return True
+
+    def initialise(self):
+        self.called = False
+
+    def update(self):
+        if self.called:
+            return py_trees.common.Status.SUCCESS
+        try:
+            from tiago_arm_manipulation.srv import DoorPregraspRequest
+            from geometry_msgs.msg import PoseStamped
+            
+            rospy.loginfo("  [%s] Calling door_pregrasp service (execute=%s)", 
+                         self.name, self.execute)
+            rospy.wait_for_service(self.service_name, timeout=5.0)
+            
+            # Create request
+            req = DoorPregraspRequest()
+            req.use_latest_handle = True
+            req.handle_override = PoseStamped()
+            req.approach_distance = self.approach_distance
+            req.lateral_offset = 0.0
+            req.vertical_offset = 0.0
+            req.velocity_scaling = 0.2
+            req.acceleration_scaling = 0.2
+            req.execute = self.execute
+            
+            resp = self.proxy.call(req)
+            self.called = True
+            
+            if resp.ok:
+                rospy.loginfo("  [%s] Door pregrasp succeeded: %s", self.name, resp.message)
+                return py_trees.common.Status.SUCCESS
+            else:
+                rospy.logwarn("  [%s] Door pregrasp failed: %s", self.name, resp.message)
+                return py_trees.common.Status.FAILURE
+        except Exception as e:
+            rospy.logwarn("  [%s] Door pregrasp call failed: %s", self.name, str(e))
+            return py_trees.common.Status.FAILURE
             return py_trees.common.Status.FAILURE

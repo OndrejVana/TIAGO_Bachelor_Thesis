@@ -14,9 +14,18 @@ from bt_nodes import (
     CallEmptyServiceOnce,
     CallSetBoolServiceOnce,
     DelaySeconds,
+    CallTriggerServiceOnce,
+    CallDoorPregraspOnce,
 )
 
 def make_tree(params):
+    # Phase 0: Switch RTAB-Map to localization mode
+    rtabmap_localization = CallEmptyServiceOnce(
+        "RTABMapLocalizationMode",
+        "/set_mode_localization",
+        timeout_s=2.0
+    )
+    
     # Phase 1: Door model ready
     wait_plane = WaitForPose("WaitForPlanePose", params["plane_topic"], params["pose_max_age_s"])
 
@@ -83,13 +92,36 @@ def make_tree(params):
     timeout_s=2.0,
     )
     
-    # Phase 4: Door open (placeholder)
-    # TODO: Planning 
+    gripper_open = CallTriggerServiceOnce(
+        "GripperOpen",
+        "/tiago_arm_manipulation/gripper_open",
+        timeout_s=5.0
+    )
     
-    # Arm placeholder
-    open_door = py_trees.behaviours.Success(name="OpenDoorPlaceholder")
+    move_to_pregrasp = CallDoorPregraspOnce(
+        "MoveToPregrasp",
+        service_name="/tiago_arm_manipulation/door_pregrasp",
+        execute=True,
+        approach_distance=0.12,
+        timeout_s=30.0
+    )
+    
+    gripper_close = CallTriggerServiceOnce(
+        "GripperClose",
+        "/tiago_arm_manipulation/gripper_close",
+        timeout_s=5.0
+    )
+    
+    arm_manipulation = py_trees.composites.Sequence(
+        name="ArmManipulation",
+        memory=True,
+        children=[gripper_open, move_to_pregrasp, gripper_close],
+    )
 
-    # Phase 5: Go through door (placeholder)
+    # Phase 4: Planning and executing door-opening trajectory
+    plan_trajectory = py_trees.behaviours.Success(name="PlanDoorTrajectoryPlaceholder")
+
+    # Phase 5: Go through door (placeholder - would need navigation goal beyond door)
     go_through = py_trees.behaviours.Success(name="GoThroughPlaceholder")
 
     # Delay to observe door mask effect (for debugging/visualization)
@@ -110,19 +142,29 @@ def make_tree(params):
         children=[disable_mask, clear_costmaps_2],
     )
 
+    # Phase 8: Switch RTAB-Map back to SLAM mode (resume mapping)
+    rtabmap_slam = CallEmptyServiceOnce(
+        "RTABMapSLAMMode",
+        "/set_mode_mapping",
+        timeout_s=2.0
+    )
+
     # Root mission sequence
     root = py_trees.composites.Sequence(
         name="DoorMission",
         memory=True,
         children=[
+            rtabmap_localization,
             door_model_ready,
             nav_retry,
             prep_door,
             freeze_srv,
-            open_door,
+            arm_manipulation,
+            plan_trajectory,
             go_through,
             observe_mask,
             restore,
+            rtabmap_slam,
         ],
     )
 
@@ -182,7 +224,6 @@ def main():
                 rospy.logwarn("[BT] ✗ %s: FAILURE", node_name)
             previous_status[node_name] = current_status
         
-        # Recursively check children
         if hasattr(tree_node, 'children'):
             for child in tree_node.children:
                 log_status_changes(child)

@@ -8,15 +8,11 @@ from std_srvs.srv import Trigger, TriggerResponse
 
 import tf2_ros
 import tf2_geometry_msgs
+import tf.transformations as tft
 
 import actionlib
-from control_msgs.msg import GripperCommandAction, GripperCommandGoal
-
-try:
-    from control_msgs.msg import GripperCommandAction, GripperCommandGoal
-    _HAS_GRIPPER_CMD = True
-except Exception:
-    _HAS_GRIPPER_CMD = False
+from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 import moveit_commander
 import moveit_msgs.msg
@@ -32,6 +28,26 @@ def quat_from_yaw(yaw):
     q.x = 0.0
     q.y = 0.0
     q.z = math.sin(yaw * 0.5)
+    return q
+
+
+def quat_for_handle_grasp(yaw, wrist_rotation=0.0):
+    """
+    Create quaternion for grasping horizontal door handle.
+    
+    Args:
+        yaw: Direction to face (toward handle)
+        wrist_rotation: Rotation around approach axis (default: 0 for palm-down grasp)
+    
+    Returns:
+        Quaternion for end-effector orientation
+    """
+    q_array = tft.quaternion_from_euler(wrist_rotation, 0.0, yaw)
+    q = Quaternion()
+    q.x = q_array[0]
+    q.y = q_array[1]
+    q.z = q_array[2]
+    q.w = q_array[3]
     return q
 
 
@@ -106,11 +122,8 @@ class TiagoArmManipulationNode(object):
         rospy.loginfo("tiago_arm_manipulation ready.")
 
     def _init_gripper_client(self):
-        if not _HAS_GRIPPER_CMD:
-            rospy.logwarn("GripperCommandAction not available in this environment.")
-            return
-        action_name = "/hand_grasping_action"
-        self.gripper_client = actionlib.SimpleActionClient(action_name, GripperCommandAction)
+        action_name = "/hand_controller/follow_joint_trajectory"
+        self.gripper_client = actionlib.SimpleActionClient(action_name, FollowJointTrajectoryAction)
         rospy.loginfo("Waiting for gripper action server: %s ...", action_name)
         if not self.gripper_client.wait_for_server(rospy.Duration(5.0)):
             rospy.logwarn("Gripper action server not reachable: %s", action_name)
@@ -216,7 +229,7 @@ class TiagoArmManipulationNode(object):
         """
         Compute a simple pregrasp target:
           - position: offset from handle along -X of base frame by approach_distance
-          - yaw: face the handle (end-eff yaw points from base toward handle)
+          - orientation: face the handle with gripper rotated 90° for sideways grasp
         """
         hx = handle_base.pose.position.x
         hy = handle_base.pose.position.y
@@ -234,8 +247,7 @@ class TiagoArmManipulationNode(object):
         tgt.pose.position.x = hx - approach_distance * dx
         tgt.pose.position.y = hy - approach_distance * dy + lateral_offset
         tgt.pose.position.z = hz + vertical_offset
-
-        tgt.pose.orientation = quat_from_yaw(yaw)
+        tgt.pose.orientation = quat_for_handle_grasp(yaw)
         return tgt
 
     def _srv_door_pregrasp(self, req):
@@ -269,20 +281,34 @@ class TiagoArmManipulationNode(object):
             return DoorPregraspResponse(ok=False, message=str(e), planned_target_base=PoseStamped())
 
     def _srv_gripper_open(self, _req):
-        ok, msg = self._gripper_command(position=0.08, max_effort=40.0)  # tune
+        ok, msg = self._gripper_command(open_gripper=True)
         return TriggerResponse(success=ok, message=msg)
 
     def _srv_gripper_close(self, _req):
-        ok, msg = self._gripper_command(position=0.00, max_effort=60.0)  # tune
+        ok, msg = self._gripper_command(open_gripper=False)
         return TriggerResponse(success=ok, message=msg)
 
-    def _gripper_command(self, position, max_effort):
+    def _gripper_command(self, open_gripper):
         if self.gripper_client is None:
             return False, "Gripper action client not available"
         try:
-            goal = GripperCommandGoal()
-            goal.command.position = position
-            goal.command.max_effort = max_effort
+            goal = FollowJointTrajectoryGoal()
+            trajectory = JointTrajectory()
+            trajectory.joint_names = ['hand_thumb_joint', 'hand_index_joint', 
+                                     'hand_mrl_joint']
+            
+            point = JointTrajectoryPoint()
+            if open_gripper:
+                # Open position
+                point.positions = [0.0, 0.0, 0.0]
+            else:
+                # Close position
+                point.positions = [2.0, 2.0, 2.0]
+            
+            point.time_from_start = rospy.Duration(2.0)
+            trajectory.points = [point]
+            goal.trajectory = trajectory
+            
             self.gripper_client.send_goal(goal)
             finished = self.gripper_client.wait_for_result(rospy.Duration(5.0))
             if not finished:

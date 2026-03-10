@@ -21,5 +21,6 @@ approach_distance: 0.12
 lateral_offset: 0.00
 vertical_offset: 0.00
 
-named_home: "home"
-named_stow: "stow"
+# Placeholders
+named_home: ""
+named_stow: ""

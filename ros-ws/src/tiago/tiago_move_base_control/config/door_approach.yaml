@@ -3,7 +3,7 @@ handle_topic: /door/handle_pose_map
 goal_topic: /tiago_move_base_control/goal
 trigger_topic: /tiago_move_base_control/generate_goal
 
-stand_off_m: 1.5
+stand_off_m: 0.9
 lateral_offset_m: 0.00
 
 use_handle_as_target: true
