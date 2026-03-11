@@ -119,8 +119,8 @@ def make_tree(params):
     )
 
     # Phase 4: Planning and executing door-opening trajectory
-    plan_trajectory = py_trees.behaviours.Success(name="PlanDoorTrajectoryPlaceholder")
-
+    plan_trajectory = py_trees.behaviours.Success(name="PlanAndExecuteDoorTrajectoryPlaceholder")
+    
     # Phase 5: Go through door (placeholder - would need navigation goal beyond door)
     go_through = py_trees.behaviours.Success(name="GoThroughPlaceholder")
 
@@ -189,7 +189,7 @@ def main():
         # Door mask + costmap clearing
         "door_mask_enable_topic": rospy.get_param("~door_mask_enable_topic", "/door_mask/enabled"),
         "clear_costmaps_service": rospy.get_param("~clear_costmaps_service", "/tiago_move_base/move_base/clear_costmaps"),
-
+        
         "tick_hz": float(rospy.get_param("~tick_hz", 10.0)),
     }
 

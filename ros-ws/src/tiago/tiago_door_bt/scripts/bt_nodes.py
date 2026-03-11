@@ -5,11 +5,12 @@ from __future__ import print_function
 
 import rospy
 import py_trees
+import actionlib
 
 from std_msgs.msg import Empty as EmptyMsg
 from geometry_msgs.msg import PoseStamped
 from actionlib_msgs.msg import GoalStatusArray
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 import rosservice
 from std_srvs.srv import Empty as EmptySrv
 from std_srvs.srv import SetBool
@@ -386,4 +387,4 @@ class CallDoorPregraspOnce(py_trees.behaviour.Behaviour):
         except Exception as e:
             rospy.logwarn("  [%s] Door pregrasp call failed: %s", self.name, str(e))
             return py_trees.common.Status.FAILURE
-            return py_trees.common.Status.FAILURE
+        

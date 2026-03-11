@@ -42,11 +42,26 @@ class DoorTagPoseNode(object):
             except Exception:
                 pass
 
+        raw_hinge_side_by_id = rospy.get_param("~apriltag/hinge_side_by_id", {})
+        self.hinge_side_by_id = {}
+        for k, v in raw_hinge_side_by_id.items():
+            try:
+                self.hinge_side_by_id[int(k)] = str(v).strip().lower()
+            except Exception:
+                pass
+
         self.preferred_side = rospy.get_param("~apriltag/preferred_side", "")  # optional
         self.switch_hysteresis_s = float(rospy.get_param("~apriltag/switch_hysteresis_s", 0.5))
 
         # Side -> interaction label (push/pull)
         self.interaction_by_side = rospy.get_param("~apriltag/interaction_by_side", {})
+        raw_interaction_by_id = rospy.get_param("~apriltag/interaction_by_id", {})
+        self.interaction_by_id = {}
+        for k, v in raw_interaction_by_id.items():
+            try:
+                self.interaction_by_id[int(k)] = str(v).strip().lower()
+            except Exception:
+                pass
 
         # State
         self._active_tag_id = None
@@ -70,6 +85,7 @@ class DoorTagPoseNode(object):
         self.pub_tag_id = rospy.Publisher("/door/tag_id", Int32, queue_size=10)
         self.pub_side = rospy.Publisher("/door/door_side", String, queue_size=10)
         self.pub_interaction = rospy.Publisher("/door/interaction", String, queue_size=10)
+        self.pub_hinge_side = rospy.Publisher("/door/hinge_side", String, queue_size=10)
 
         self.pub_dbg = rospy.Publisher("~debug", String, queue_size=10)
 
@@ -81,7 +97,9 @@ class DoorTagPoseNode(object):
 
         rospy.loginfo("door_tag_pose_node: listening %s, tag_ids=%s", self.in_topic, str(self.tag_ids))
         rospy.loginfo("door_tag_pose_node: side_by_id=%s", str(self.side_by_id))
+        rospy.loginfo("door_tag_pose_node: hinge_side_by_id=%s", str(self.hinge_side_by_id))
         rospy.loginfo("door_tag_pose_node: interaction_by_side=%s", str(self.interaction_by_side))
+        rospy.loginfo("door_tag_pose_node: interaction_by_id=%s", str(self.interaction_by_id))
         
         if self.publish_map:
             rospy.sleep(1.0)
@@ -241,9 +259,13 @@ class DoorTagPoseNode(object):
 
         self.pub_tag_id.publish(Int32(data=int(tid)))
         self.pub_side.publish(String(data=self._active_side))
+        hinge_side = str(self.hinge_side_by_id.get(tid, "")).strip().lower()
+        self.pub_hinge_side.publish(String(data=hinge_side))
 
         interaction = ""
-        if self._active_side and isinstance(self.interaction_by_side, dict):
+        if tid in self.interaction_by_id:
+            interaction = self.interaction_by_id[tid]
+        elif self._active_side and isinstance(self.interaction_by_side, dict):
             interaction = str(self.interaction_by_side.get(self._active_side, ""))
         self.pub_interaction.publish(String(data=interaction))
 
@@ -296,7 +318,7 @@ class DoorTagPoseNode(object):
                 self.pub_dbg.publish(String(data="map_tf_failed: %s" % str(e)))
 
         self.pub_dbg.publish(String(
-            data="ok tid=%d side=%s interaction=%s " % (tid, self._active_side, interaction) + "+".join(ok)
+            data="ok tid=%d side=%s hinge_side=%s interaction=%s " % (tid, self._active_side, hinge_side, interaction) + "+".join(ok)
         ))
 
 

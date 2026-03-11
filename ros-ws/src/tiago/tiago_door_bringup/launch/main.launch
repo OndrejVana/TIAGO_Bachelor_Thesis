@@ -64,10 +64,7 @@
   </group>
 
   <!-- 5. Door Planning -->
-  <group if="$(arg use_door_planning)">
-    <include file="$(find tiago_door_planning)/launch/door_planning.launch"/>
-  </group>
-
+  
   <!-- 6. Arm Manipulation -->
   <group if="$(arg use_arm_manipulation)">
     <include file="$(find tiago_arm_manipulation)/launch/arm_manipulation.launch"/>

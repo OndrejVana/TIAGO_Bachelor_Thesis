@@ -96,6 +96,26 @@ string message
 geometry_msgs/PoseStamped planned_target_base
 ```
 
+### Service Example 
+
+```bash
+rosservice call /tiago_arm_manipulation/door_pregrasp "
+> use_latest_handle: true
+> handle_override:
+>   header:
+>     frame_id: ''
+>   pose:
+>     position: {x: 0.0, y: 0.0, z: 0.0}
+>     orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+> approach_distance: 0.0
+> lateral_offset: 0.0
+> vertical_offset: 0.0
+> velocity_scaling: 0.0
+> acceleration_scaling: 0.0
+> execute: true
+> "
+```
+
 ## Subscribed topics
 
 | Topic | Type | Description |

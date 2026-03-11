@@ -16,7 +16,9 @@
     <rosparam param="standalone_tags">
       [
         {id: 0, size: 0.144},
-        {id: 1, size: 0.144}
+        {id: 1, size: 0.144},
+        {id: 2, size: 0.144},
+        {id: 3, size: 0.144}
       ]
     </rosparam>
     <remap from="image_rect" to="/xtion/rgb/image_rect_color"/>
@@ -35,8 +37,10 @@
     <rosparam command="load" file="$(arg config)" subst_value="true"/>
     <param name="active_tag_id_topic" value="/door/tag_id"/>
     <param name="forward_side" value="true"/>
+    <param name="forward_hinge_side" value="true"/>
     <param name="forward_interaction" value="true"/>
     <param name="side_topic_in" value="/door/door_side"/>
+    <param name="hinge_side_topic_in" value="/door/hinge_side"/>
     <param name="interaction_topic_in" value="/door/interaction"/>
   </node>
 

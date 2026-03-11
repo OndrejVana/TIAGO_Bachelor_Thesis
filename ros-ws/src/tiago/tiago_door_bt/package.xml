@@ -12,7 +12,9 @@
   <depend>rospy</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>actionlib</depend>
   <depend>actionlib_msgs</depend>
+  <depend>tiago_door_planning</depend>
 
   <!-- Python BT library (ROS package name in Melodic) -->
   <depend>py_trees</depend>

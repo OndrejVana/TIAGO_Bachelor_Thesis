@@ -18,7 +18,11 @@ This package provides a unified launch file (`main.launch`) that orchestrates al
 ### Basic Simulation with All Features
 
 ```bash
+# Launch
 roslaunch tiago_door_bringup main.launch
+
+# Clean Map before each run
+rm ~/.ros/rtabmap.db
 ```
 
 This will launch:

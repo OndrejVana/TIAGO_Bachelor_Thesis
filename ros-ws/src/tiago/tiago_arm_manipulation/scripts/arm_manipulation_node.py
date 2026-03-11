@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import math
 import rospy
@@ -31,13 +32,13 @@ def quat_from_yaw(yaw):
     return q
 
 
-def quat_for_handle_grasp(yaw, wrist_rotation=0.0):
+def quat_for_handle_grasp(yaw, wrist_rotation=-math.pi / 2):
     """
     Create quaternion for grasping horizontal door handle.
     
     Args:
         yaw: Direction to face (toward handle)
-        wrist_rotation: Rotation around approach axis (default: 0 for palm-down grasp)
+        wrist_rotation: Rotation around approach axis (default: -90.0 for palm-down grasp)
     
     Returns:
         Quaternion for end-effector orientation

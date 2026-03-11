@@ -4,55 +4,84 @@ apriltag:
   tag_family: "tag36h11"
   tag_size_m: 0.18
 
-  # Two tags mounted on opposite sides of the door
-  tag_ids: [0, 1]
-  side_by_id:
-    "0": "front"
-    "1": "back"
+  # Tag semantics from the robot point of view while facing the door.
+  # 0: push, hinge right
+  # 1: pull, hinge left
+  # 2: push, hinge left
+  # 3: pull, hinge right
+  tag_ids: [0, 1, 2, 3]
 
-  # Define interaction type for planning
-  interaction_by_side:
-    front: "pull"
-    back: "push"
+  side_by_id:
+    "0": "push_right"
+    "1": "pull_left"
+    "2": "push_left"
+    "3": "pull_right"
+
+  hinge_side_by_id:
+    "0": "right"
+    "1": "left"
+    "2": "left"
+    "3": "right"
+
+  interaction_by_id:
+    "0": "push"
+    "1": "pull"
+    "2": "push"
+    "3": "pull"
 
   preferred_side: ""
-
   switch_hysteresis_s: 0.5
 
 
 # Door model (per tag)
 models:
 
-  # FRONT TAG (ID = 0)
+  # Tag 0: push, hinge on the right
   "0":
     door_normal_axis_tag: "z"
     hinge_axis_tag: "y"
-
     hinge_offset_xyz:  [-1.0, 1.1, 0.0]
     hinge_offset_rpy:  [0.0, 0.0, 0.0]
-
     handle_offset_xyz: [0.1, 0.2, 0.10]
-    handle_offset_rpy:  [0.0, 0.0, 0.0]
-
+    handle_offset_rpy: [0.0, 0.0, 0.0]
     door_width_m: 1.20
     handle_radius_m: 1.15
-
     publish_hinge_orientation: true
 
-  # BACK TAG (ID = 1)
+  # Tag 1: pull, hinge on the left
   "1":
     door_normal_axis_tag: "z"
     hinge_axis_tag: "y"
-
     hinge_offset_xyz:  [-1.0, -1.1, 0.0]
     hinge_offset_rpy:  [0.0, 0.0, 0.0]
-
     handle_offset_xyz: [0.1, -0.2, 0.10]
     handle_offset_rpy: [0.0, 0.0, 0.0]
-
     door_width_m: 1.20
     handle_radius_m: 1.15
+    publish_hinge_orientation: true
 
+  # Tag 2: push, hinge on the left
+  "2":
+    door_normal_axis_tag: "z"
+    hinge_axis_tag: "y"
+    hinge_offset_xyz:  [-1.0, -1.1, 0.0]
+    hinge_offset_rpy:  [0.0, 0.0, 0.0]
+    handle_offset_xyz: [0.1, -0.2, 0.10]
+    handle_offset_rpy: [0.0, 0.0, 0.0]
+    door_width_m: 1.20
+    handle_radius_m: 1.15
+    publish_hinge_orientation: true
+
+  # Tag 3: pull, hinge on the right
+  "3":
+    door_normal_axis_tag: "z"
+    hinge_axis_tag: "y"
+    hinge_offset_xyz:  [-1.0, 1.1, 0.0]
+    hinge_offset_rpy:  [0.0, 0.0, 0.0]
+    handle_offset_xyz: [0.1, 0.2, 0.10]
+    handle_offset_rpy: [0.0, 0.0, 0.0]
+    door_width_m: 1.20
+    handle_radius_m: 1.15
     publish_hinge_orientation: true
 
 # Topics

@@ -29,16 +29,22 @@ class DoorModelFromTagNode(object):
 
         # Optional forwarding for higher-level behavior
         self.forward_side = bool(rospy.get_param("~forward_side", True))
+        self.forward_hinge_side = bool(rospy.get_param("~forward_hinge_side", True))
         self.forward_interaction = bool(rospy.get_param("~forward_interaction", True))
         self.side_topic_in = rospy.get_param("~side_topic_in", "/door/door_side")
+        self.hinge_side_topic_in = rospy.get_param("~hinge_side_topic_in", "/door/hinge_side")
         self.interaction_topic_in = rospy.get_param("~interaction_topic_in", "/door/interaction")
         self.pub_side = rospy.Publisher("/door/door_side", String, queue_size=10) if self.forward_side else None
+        self.pub_hinge_side = rospy.Publisher("/door/hinge_side", String, queue_size=10) if self.forward_hinge_side else None
         self.pub_interaction = rospy.Publisher("/door/interaction", String, queue_size=10) if self.forward_interaction else None
         self._last_side = ""
+        self._last_hinge_side = ""
         self._last_interaction = ""
 
         if self.forward_side:
             rospy.Subscriber(self.side_topic_in, String, self._side_cb, queue_size=1)
+        if self.forward_hinge_side:
+            rospy.Subscriber(self.hinge_side_topic_in, String, self._hinge_side_cb, queue_size=1)
         if self.forward_interaction:
             rospy.Subscriber(self.interaction_topic_in, String, self._interaction_cb, queue_size=1)
 
@@ -86,6 +92,9 @@ class DoorModelFromTagNode(object):
 
     def _side_cb(self, msg):
         self._last_side = msg.data
+
+    def _hinge_side_cb(self, msg):
+        self._last_hinge_side = msg.data
 
     def _interaction_cb(self, msg):
         self._last_interaction = msg.data
@@ -297,8 +306,12 @@ class DoorModelFromTagNode(object):
 
         # Hinge orientation
         if bool(model.get("publish_hinge_orientation", True)):
-            q_hinge = self._quat_from_two_axes(z_axis=u_hinge_map, x_hint=-n_map)
-            if q_hinge is not None:
+            handle_pos = T_map_handle[0:3, 3]
+            hinge_pos = T_map_hinge[0:3, 3]
+            leaf_xy = handle_pos[0:2] - hinge_pos[0:2]
+            if np.linalg.norm(leaf_xy) > 1e-9:
+                yaw = np.arctan2(leaf_xy[1], leaf_xy[0])
+                q_hinge = tft.quaternion_from_euler(0.0, 0.0, yaw)
                 hinge_msg.pose.orientation.x = float(q_hinge[0])
                 hinge_msg.pose.orientation.y = float(q_hinge[1])
                 hinge_msg.pose.orientation.z = float(q_hinge[2])
@@ -308,13 +321,15 @@ class DoorModelFromTagNode(object):
 
         if self.pub_side is not None:
             self.pub_side.publish(String(data=self._last_side))
+        if self.pub_hinge_side is not None:
+            self.pub_hinge_side.publish(String(data=self._last_hinge_side))
         if self.pub_interaction is not None:
             self.pub_interaction.publish(String(data=self._last_interaction))
 
         self.pub_dbg.publish(String(
-            data="ok tid=%d handle+hinge+plane (door_width_m=%.3f handle_radius_m=%.3f) side=%s interaction=%s" %
+            data="ok tid=%d handle+hinge+plane (door_width_m=%.3f handle_radius_m=%.3f) side=%s hinge_side=%s interaction=%s" %
                  (used_tid, float(model.get("door_width_m", 0.0)), float(model.get("handle_radius_m", 0.0)),
-                  self._last_side, self._last_interaction)
+                  self._last_side, self._last_hinge_side, self._last_interaction)
         ))
 
 

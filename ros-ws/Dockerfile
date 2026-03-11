@@ -80,6 +80,7 @@ RUN apt-get update && apt-get install -y \
   ros-melodic-tf2-geometry-msgs \
   ros-melodic-image-transport \
   ros-melodic-cv-bridge \
+  ros-melodic-py-trees \
   && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
