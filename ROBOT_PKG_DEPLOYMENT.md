@@ -77,7 +77,7 @@ cat << 'EOF' > /tmp/build_ws.sh
 #!/bin/bash
 set -e
 cd /tiago_dev_ws
-catkin config --extend /opt/ros/melodic --blacklist darknet_ros_msgs darknet_ros orb_slam2_ros orb_slam3_ros
+catkin config --extend /opt/ros/melodic
 catkin build
 echo 'Build OK'
 EOF
@@ -196,18 +196,6 @@ export ROS_IP=<your-laptop-ip>
 
 - Make sure both robot and laptop can ping each other by hostname
 - If not, use `ROS_IP` (laptop IP visible to robot) instead of relying on hostname resolution
-
-**Rebuild after adding a new package:**
-
-```bash
-ssh pal@tiago-114c
-docker run --rm --net=host \
-  -v /home/pal/tiago_ws/src:/tiago_dev_ws/src/custom \
-  -v /home/pal/tiago_ws/build:/tiago_dev_ws/build \
-  -v /home/pal/tiago_ws/devel:/tiago_dev_ws/devel \
-  tiago_dev_melodic:latest \
-  bash -c "cd /tiago_dev_ws && catkin_make && echo 'Build OK'"
-```
 
 **Check what is running on the robot:**
 

@@ -142,7 +142,7 @@ export ROS_IP=10.68.0.128
 export ROS_IP=192.168.251.123
 ```
 
-- For detailed information about packgage deployment refer to [robot_deployment.md](../../../../robot_deployment.md)
+- For detailed information about packgage deployment refer to [ROBOT_PKG_DEPLOYMENT.md](../../../../ROBOT_PKG_DEPLOYMENT.md)
 
 ## RViz Configuration
 
