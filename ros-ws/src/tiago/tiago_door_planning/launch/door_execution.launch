@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <!-- Door execution server — coordinates time-synchronised base + arm motion. -->
+
+  <arg name="arm_controller_right"
+       default="/arm_right_controller/follow_joint_trajectory"/>
+  <arg name="arm_controller_left"
+       default="/arm_left_controller/follow_joint_trajectory"/>
+  <arg name="torso_controller"
+       default="/torso_controller/follow_joint_trajectory"/>
+
+  <node pkg="tiago_door_planning" type="door_execution_server.py"
+        name="door_execution_server" output="screen">
+
+    <param name="frames/map"  value="map"/>
+    <param name="frames/base" value="base_footprint"/>
+
+    <param name="control_rate"         value="20.0"/>
+    <param name="position_tolerance"   value="0.05"/>
+    <param name="angle_tolerance"      value="0.1"/>
+
+    <param name="max_linear_vel"  value="0.3"/>
+    <param name="max_angular_vel" value="0.6"/>
+
+    <param name="kp_linear"  value="1.0"/>
+    <param name="kp_angular" value="2.0"/>
+
+    <param name="arm_controller_right" value="$(arg arm_controller_right)"/>
+    <param name="arm_controller_left"  value="$(arg arm_controller_left)"/>
+    <param name="torso_controller"     value="$(arg torso_controller)"/>
+
+    <param name="action_name" value="execute_door_opening"/>
+  </node>
+</launch>

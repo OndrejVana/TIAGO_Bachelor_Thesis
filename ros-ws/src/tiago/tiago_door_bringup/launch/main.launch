@@ -5,18 +5,22 @@
   <arg name="use_slam" default="true" doc="Enable SLAM for mapping and localization"/>
   <arg name="use_door_perception" default="true" doc="Enable AprilTag-based door detection"/>
   <arg name="use_navigation" default="true" doc="Enable navigation (move_base) control"/>
-  <arg name="use_door_planning" default="true" doc="Enable door-opening trajectory planning"/>
+  <arg name="use_door_planning" default="false" doc="Enable door-opening trajectory planning"/>
   <arg name="use_arm_manipulation" default="true" doc="Enable arm motion planning and gripper control"/>
-  <arg name="use_behavior_tree" default="true" doc="Enable BT-based door navigation"/>
+  <arg name="use_behavior_tree" default="false" doc="Enable BT-based door navigation"/>
   <arg name="use_vicon" default="false" doc="Enable VICON motion capture system"/>
   <arg name="rviz" default="true" doc="Launch RViz for visualization"/>
 
   
   <!-- Simulation Configuration -->
   <arg name="world_file" default="$(find tiago_door_sim)/worlds/small_office_with_door.world"/>
-  <arg name="robot" default="titanium" doc="Robot model: iron, steel, or titanium"/>
-  <arg name="arm" default="$(eval {'iron': False}.get(arg('robot'), True))"/>
-  <arg name="end_effector" default="$(eval {'iron': 'false', 'steel': 'pal-gripper', 'titanium': 'pal-hey5'}.get(arg('robot'), 'pal-gripper'))"/>
+  <!-- robot: iron (no-arm), steel (gripper), titanium (hey5), tiago++ (dual-arm) -->
+  <arg name="robot" default="tiago++" doc="Robot model: iron, steel, titanium, or tiago++"/>
+  <!-- Single-arm variants -->
+  <arg name="arm" default="$(eval arg('robot') not in ['iron'])"/>
+  <arg name="end_effector" default="$(eval {'iron': 'false', 'steel': 'pal-gripper', 'titanium': 'pal-hey5'}.get(arg('robot'), 'pal-hey5'))"/>
+  <arg name="end_effector_left"  default="pal-hey5" doc="Tiago++ left arm end-effector (pal-hey5 or pal-gripper)"/>
+  <arg name="end_effector_right" default="pal-hey5" doc="Tiago++ right arm end-effector (pal-hey5 or pal-gripper)"/>
   <arg name="laser_model" default="sick-571"/>
   <arg name="camera_model" default="orbbec-astra"/>
   <arg name="gui" default="true" doc="Show Gazebo GUI"/>
@@ -37,6 +41,8 @@
       <arg name="robot" value="$(arg robot)"/>
       <arg name="arm" value="$(arg arm)"/>
       <arg name="end_effector" value="$(arg end_effector)"/>
+      <arg name="end_effector_left"  value="$(arg end_effector_left)"/>
+      <arg name="end_effector_right" value="$(arg end_effector_right)"/>
       <arg name="laser_model" value="$(arg laser_model)"/>
       <arg name="camera_model" value="$(arg camera_model)"/>
       <arg name="gui" value="$(arg gui)"/>

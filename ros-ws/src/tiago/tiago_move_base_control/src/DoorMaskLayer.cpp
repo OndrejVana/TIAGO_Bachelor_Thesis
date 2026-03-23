@@ -12,9 +12,9 @@ namespace tiago_move_base_control
 
 DoorMaskLayer::DoorMaskLayer()
 : enabled_(false),
-  width_m_(1.1),
+  width_m_(0.9),
   thickness_m_(0.35),
-  margin_m_(0.10),
+  margin_m_(0.25),
   set_unknown_(false),
   have_pose_(false),
   last_min_x_(0), last_min_y_(0), last_max_x_(0), last_max_y_(0)
@@ -27,9 +27,9 @@ void DoorMaskLayer::onInitialize()
   nh.param("door_pose_topic", door_pose_topic_, std::string("/door/door_pose_map"));
   nh.param("enabled_topic", enabled_topic_, std::string("/door_mask/enabled"));
   nh.param("enabled", enabled_, false);
-  nh.param("width_m", width_m_, 1.1);
+  nh.param("width_m", width_m_, 0.9);
   nh.param("thickness_m", thickness_m_, 0.35);
-  nh.param("margin_m", margin_m_, 0.10);
+  nh.param("margin_m", margin_m_, 0.25);
   nh.param("set_unknown_instead_of_free", set_unknown_, false);
 
   door_pose_sub_ = nh.subscribe(door_pose_topic_, 1, &DoorMaskLayer::doorPoseCb, this);

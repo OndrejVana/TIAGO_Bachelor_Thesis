@@ -57,7 +57,7 @@ class DoorModelFromTagNode(object):
         self.legacy_hinge_offset_rpy = rospy.get_param("~hinge_offset_rpy", [0.0, 0.0, 0.0])
         self.legacy_publish_hinge_orientation = bool(rospy.get_param("~publish_hinge_orientation", True))
         self.legacy_door_width_m = float(rospy.get_param("~door_width_m", 0.9))
-        self.legacy_handle_radius_m = float(rospy.get_param("~handle_radius_m", 0.7))
+        self.legacy_handle_radius_m = float(rospy.get_param("~handle_radius_m", 0.75))
 
         # Per-tag models
         raw_models = rospy.get_param("~models", {})

@@ -1,0 +1,15 @@
+# Goal - trajectories from planning
+nav_msgs/Path base_path
+float64[] base_times      # time_from_start [s] for each base_path waypoint
+trajectory_msgs/JointTrajectory arm_trajectory
+float64 velocity_scaling  # 0.0-1.0, default 1.0
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string stage
+float32 progress
+int32 current_waypoint
+int32 total_waypoints

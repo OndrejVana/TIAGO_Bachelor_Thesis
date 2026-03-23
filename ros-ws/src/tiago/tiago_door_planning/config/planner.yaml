@@ -1,0 +1,145 @@
+frames:
+  map: map
+  base: base_footprint
+
+topics:
+  hinge_pose: /door/hinge_pose_map
+  handle_pose: /door/handle_pose_map
+  hinge_side: /door/hinge_side
+  base_path_out: /door_plan/base_path
+  handle_path_out: /door_plan/handle_path
+  ee_target_path_out: /door_plan/ee_target_path
+
+costmap:
+  occupancy_topic: /tiago_move_base/move_base/local_costmap/costmap
+  occ_threshold: 50
+  robot_radius: 0.30
+
+door_model:
+  door_width: 0.90
+  handle_offset_from_hinge: 0.80
+  handle_height: 1.00
+
+planning:
+  use_torso: false
+  use_detected_handle_frame: true
+  enforce_monotonic_opening: true
+  allow_regrasp: false
+  use_approach_orientation: true
+  use_hinge_direction: true
+  hinge_direction_delta_scale: 1.0
+  door_collision_enabled: false
+  grasp_approach_offset: 0.05 # m - pull EE back from handle along approach axis
+  grasp_lateral_offset: -0.05 # m - shift EE perpendicular to approach; negative = right
+  arm_ik_n_per_segment: 3
+  grasp_wrist_roll_rad: -1.5708 # rad - palm orientation (-pi/2 = palm-down grasp)
+  grasp_yaw_offset_rad: -1.5708 # rad - constant yaw offset applied to EE orientation;
+  
+  grasp_offset_x: 0.0
+  grasp_offset_y: 0.0
+  grasp_offset_z: 0.0
+  grasp_roll_rad: 0.0
+  grasp_pitch_rad: 0.0
+  grasp_yaw_rad: 0.0
+
+  pull_grasp_offset_x: 0.0
+  pull_grasp_offset_y: 0.0
+  pull_grasp_offset_z: 0.0
+  pull_grasp_roll_rad: 0.0
+  pull_grasp_pitch_rad: 0.0
+  pull_grasp_yaw_rad: 3.14159
+
+planner:
+  # Lattice configuration
+  xy_resolution: 0.05
+  theta_bins: 16
+  primitive_step: 0.08
+  arc_radius_m: 0.40
+  allow_reverse: true
+  primitive_samples_n: 12
+  
+  # Door configuration
+  door_open_angle_rad: 1.571
+  door_angle_step_deg: 5.0
+  door_thickness_m: 0.04
+  
+  # Robot constraints
+  robot_radius: 0.30
+  reach_min: 0.35
+  reach_max: 0.93
+
+  # Geometric workspace constraints
+  handle_height: 1.0
+  reach_lateral_factor: 0.85
+  max_reach_angle_deg: 110.0
+  min_elevation_deg: -25.0
+  max_elevation_deg: 65.0
+
+  # reachability backend
+  reachability_backend: offline_map
+  reachability_map_path: "" # fallback / single-arm - set in launch file
+
+  # Dual-arm reachability maps (Tiago++).
+  reachability_map_path_right_arm: "" # set in launch file
+  reachability_map_path_left_arm:  "" # set in launch file
+  reachability_fixed_z: 1.05
+  reachability_z_tol: 0.15
+  
+  reachability_y_exclusion_half_width_m: 0.0
+  use_grasp_yaw: true
+  grasp_yaw_offset_rad: -1.5708 # rad - must match planning/grasp_yaw_offset_rad
+  
+  # Search configuration
+  use_anytime: true
+  w_astar: 2.0
+  ara_eps_start: 8.0
+  ara_eps_end: 1.0
+  ara_eps_step: 1.0
+  goal_open_angle_rad: 1.047 # 60 degrees
+  goal_tolerance_rad: 0.175
+
+  monotonic_angle_tol_rad: 0.00873 # about 0.5 deg
+
+base_planner:
+  retreat_distance: 0.50
+  retreat_steps: 10
+  max_yaw_change: 0.6
+
+costs:
+  w_costmap: 1.0
+  w_arm: 1.0
+  arm_nominal_dist: 0.55
+  arm_sigma: 0.15
+  arm_min_dist: 0.35
+  arm_max_dist: 0.93
+  arm_hard_penalty: 1000.0
+  
+  arm_centerline_danger_m: 0.20
+  arm_centerline_penalty: 30.0
+
+moveit:
+  group: arm_torso   # fallback / single-arm Tiago
+  ee_link: ""
+
+  # Per-arm MoveIt groups for Tiago++ dual-arm mode.
+  group_right_arm:   arm_right_torso
+  ee_link_right_arm: arm_right_7_link
+  group_left_arm:    arm_left_torso
+  ee_link_left_arm:  arm_left_7_link
+  ik_timeout: 0.1
+  plan_time: 10.0
+  fallback_wrist_rolls: []
+  ik_max_failure_fraction: 0.15
+  ik_max_joint_jump_rad: 1.5
+
+  unseeded_max_jump_rad: 0.5
+  ik_max_consecutive_gap: 2
+
+monitor:
+  time_monotonic_tol: 1.0e-6
+  angle_monotonic_tol_rad: 0.00873 # 0.5 deg
+  max_base_step_m: 0.20
+  max_base_yaw_step_rad: 0.60
+  max_ee_step_m: 0.35
+  max_handle_step_m: 0.35
+  arm_time_mismatch_tol: 0.50

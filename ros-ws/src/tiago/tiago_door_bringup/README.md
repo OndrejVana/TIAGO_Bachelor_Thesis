@@ -1,6 +1,6 @@
-# TIAGo Door Bringup Package
+# TIAGo++ Door Bringup Package
 
-Main entry point for launching the complete TIAGo door navigation system.
+Main entry point for launching the complete TIAGo++ dual-arm door navigation system.
 
 ## Overview
 
@@ -47,8 +47,8 @@ roslaunch tiago_door_bringup main.launch \
   use_navigation:=false \
   use_behavior_tree:=false
 
-# Different robot model
-roslaunch tiago_door_bringup main.launch robot:=steel
+# Different robot model (tiago++ is default; use titanium/steel/iron for single-arm)
+roslaunch tiago_door_bringup main.launch robot:=titanium
 
 # With VICON ground truth
 roslaunch tiago_door_bringup main.launch use_vicon:=true
@@ -69,7 +69,7 @@ roslaunch tiago_door_bringup main.launch use_vicon:=true
 ### Simulation Settings
 
 - `world_file` (default: TIAGo door world) - Gazebo world file path
-- `robot` (default: `titanium`) - Robot model: `iron`, `steel`, or `titanium`
+- `robot` (default: `tiago++`) - Robot model: `tiago++` (dual-arm), `titanium`, `steel`, or `iron`
 - `gui` (default: `true`) - Show Gazebo GUI
 - `gzpose` (default: origin) - Initial robot spawn pose
 

@@ -1,26 +1,35 @@
-move_group_name: "arm"
-ee_link: "" # "arm_7_link"
+# Right arm — used when hinge_side == "left" (handle on the right)
+move_group_name: "arm_right"
+ee_link: "arm_right_7_link"
+gripper_controller: "hand_right_controller"
+gripper_joint_names:
+  - "hand_right_thumb_joint"
+  - "hand_right_index_joint"
+  - "hand_right_mrl_joint"
 
-# Frames
+# Left arm — used when hinge_side == "right" (handle on the left)
+move_group_name_left: "arm_left"
+ee_link_left: "arm_left_7_link"
+gripper_controller_left: "hand_left_controller"
+gripper_joint_names_left:
+  - "hand_left_thumb_joint"
+  - "hand_left_index_joint"
+  - "hand_left_mrl_joint"
+
+hinge_side_topic: "/door/hinge_side"
+
 planning_frame: ""
 base_frame_fallback: "base_footprint"
-
-# Door topics
 handle_topic: "/door/handle_pose_map"
 
-# Default tolerances
 position_tolerance: 0.01
 orientation_tolerance: 0.05
-
-# Default scaling
 velocity_scaling: 0.2
 acceleration_scaling: 0.2
 
-# Door pregrasp defaults
 approach_distance: 0.12
 lateral_offset: 0.00
 vertical_offset: 0.00
 
-# Placeholders
 named_home: ""
 named_stow: ""

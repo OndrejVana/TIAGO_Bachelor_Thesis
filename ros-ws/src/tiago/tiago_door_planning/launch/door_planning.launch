@@ -1,0 +1,17 @@
+<launch>
+  <arg name="config"          default="$(find tiago_door_planning)/config/planner.yaml"/>
+
+  <!-- Single-arm / fallback map (used when per-arm maps are not set) -->
+  <arg name="reachability_map"           default="$(find tiago_door_planning)/maps/sim_map.npz"/>
+
+  <arg name="reachability_map_right_arm" default="$(find tiago_door_planning)/maps/sim_map_right_arm.npz"/>
+  <arg name="reachability_map_left_arm"  default="$(find tiago_door_planning)/maps/sim_map_left_arm.npz"/>
+
+  <node pkg="tiago_door_planning" type="door_planning_server.py"
+        name="tiago_door_planning" output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+    <param name="planner/reachability_map_path"           value="$(arg reachability_map)"/>
+    <param name="planner/reachability_map_path_right_arm" value="$(arg reachability_map_right_arm)"/>
+    <param name="planner/reachability_map_path_left_arm"  value="$(arg reachability_map_left_arm)"/>
+  </node>
+</launch>

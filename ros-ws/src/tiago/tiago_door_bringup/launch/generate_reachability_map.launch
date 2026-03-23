@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    Generate an offline arm-reachability quality map for the TIAGo++ door planner.
+
+    For dual-arm Tiago++ you must generate TWO maps — one per arm:
+
+      # Right arm (used when door hinge is on the LEFT):
+      roslaunch tiago_door_bringup generate_reachability_map.launch arm:=right
+
+      # Left arm (used when door hinge is on the RIGHT):
+      roslaunch tiago_door_bringup generate_reachability_map.launch arm:=left
+
+    For single-arm Tiago:
+      roslaunch tiago_door_bringup generate_reachability_map.launch \
+        arm:=right group:=arm_torso ee_link:=arm_7_link \
+        output_map:=$(rospack find tiago_door_planning)/maps/sim_map.npz
+  -->
+
+  <!-- Which arm to generate the map for: "right" or "left" -->
+  <arg name="arm"    default="right" doc="Arm to generate map for: right or left"/>
+
+  <!-- MoveIt group and end-effector link — auto-filled from arm arg for Tiago++ -->
+  <arg name="group"   default="arm_$(arg arm)_torso"/>
+  <arg name="ee_link" default="arm_$(arg arm)_7_link"/>
+
+  <!-- Output path — one file per arm -->
+  <arg name="output_map"
+       default="$(find tiago_door_planning)/maps/sim_map_$(arg arm)_arm.npz"/>
+
+  <!-- Simulation + MoveIt bringup (no nav / perception / BT) -->
+  <arg name="robot"         default="tiago++"/>
+  <arg name="world_file"
+       default="$(find tiago_door_sim)/worlds/small_office_with_door.world"/>
+  <arg name="startup_delay" default="30"
+       doc="Seconds to wait for Gazebo + MoveIt to be ready before starting generation"/>
+
+  <include file="$(find tiago_door_bringup)/launch/main.launch">
+    <arg name="simulation"           value="true"/>
+    <arg name="robot"                value="$(arg robot)"/>
+    <arg name="world_file"           value="$(arg world_file)"/>
+    <arg name="gui"                  value="false"/>
+    <arg name="use_slam"             value="false"/>
+    <arg name="use_door_perception"  value="false"/>
+    <arg name="use_navigation"       value="false"/>
+    <arg name="use_arm_manipulation" value="false"/>
+    <arg name="use_behavior_tree"    value="false"/>
+    <arg name="use_vicon"            value="false"/>
+    <arg name="rviz"                 value="false"/>
+  </include>
+
+  <node pkg="tiago_door_planning"
+        type="generate_reachability_map.py"
+        name="generate_reachability_map"
+        output="screen"
+        required="true"
+        launch-prefix="bash -c 'sleep $(arg startup_delay) &amp;&amp; $0 &quot;$@&quot;'"
+        args="
+          --output        $(arg output_map)
+          --frame-id      base_footprint
+          --group         $(arg group)
+          --ee-link       $(arg ee_link)
+          --x-min  0.20   --x-max  1.00  --x-step 0.05
+          --y-min -0.60   --y-max  0.60  --y-step 0.05
+          --yaw-min-deg -180  --yaw-max-deg 175  --yaw-step-deg 5
+          --fixed-z              1.05
+          --grasp-yaw-offset-rad -1.5708
+          --wrist-roll-rad       -1.5708
+          --theta-step-deg       22.5
+          --max-joint-jump-rad   1.5
+          --n-seeds              4
+          --connectivity-weight  0.5
+          --quality-threshold    0.25
+          --ik-timeout           0.05
+        "/>
+
+</launch>

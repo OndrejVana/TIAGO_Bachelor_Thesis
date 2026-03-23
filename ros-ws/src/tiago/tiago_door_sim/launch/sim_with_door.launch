@@ -8,10 +8,17 @@
   <arg name="extra_gazebo_args" default=""/>
 
   <!-- TIAGo configuration -->
-  <arg name="robot" default="titanium"/>
-  <arg name="arm" default="$(eval {'iron': False}.get(arg('robot'), True))"/>
-  <arg name="end_effector" default="$(eval {'iron': 'false', 'steel': 'pal-gripper', 'titanium': 'pal-hey5'}.get(arg('robot'), 'pal-gripper'))"/>
+  <!-- robot: iron (no-arm), steel (gripper), titanium (hey5), tiago++ (dual-arm) -->
+  <arg name="robot" default="tiago++"/>
+  <!-- Single-arm config (iron / steel / titanium) -->
+  <arg name="arm" default="$(eval arg('robot') not in ['iron'])"/>
+  <arg name="end_effector" default="$(eval {'iron': 'false', 'steel': 'pal-gripper', 'titanium': 'pal-hey5'}.get(arg('robot'), 'pal-hey5'))"/>
   <arg name="ft_sensor" default="$(eval {'titanium': 'schunk-ft'}.get(arg('robot'), 'false'))"/>
+  <!-- Tiago++ dual-arm config -->
+  <arg name="end_effector_left"  default="pal-hey5"/>
+  <arg name="end_effector_right" default="pal-hey5"/>
+  <arg name="ft_sensor_left"     default="schunk-ft"/>
+  <arg name="ft_sensor_right"    default="schunk-ft"/>
   <arg name="laser_model" default="sick-571"/>
   <arg name="camera_model" default="orbbec-astra"/>
   <arg name="base_type" default="pmb2"/>
@@ -45,37 +52,74 @@
     <arg name="extra_gazebo_args" value="$(arg extra_gazebo_args)"/>
   </include>
 
-  <!-- Spawn TIAGo -->
-  <include file="$(find tiago_gazebo)/launch/tiago_spawn.launch">
-    <arg name="arm" value="$(arg arm)"/>
-    <arg name="end_effector" value="$(arg end_effector)"/>
-    <arg name="ft_sensor" value="$(arg ft_sensor)"/>
-    <arg name="laser_model" value="$(arg laser_model)"/>
-    <arg name="camera_model" value="$(arg camera_model)"/>
-    <arg name="multi" value="$(arg multi)"/>
-    <arg name="gzpose" value="$(arg gzpose)"/>
-    <arg name="base_type" value="$(arg base_type)"/>
-    <arg name="slow_control_period" value="$(arg slow_control_period)"/>
-    <arg name="has_screen" value="$(arg has_screen)"/>
-  </include>
+  <!-- Spawn TIAGo (single-arm: iron / steel / titanium) -->
+  <group unless="$(eval arg('robot') == 'tiago++')">
+    <include file="$(find tiago_gazebo)/launch/tiago_spawn.launch">
+      <arg name="arm" value="$(arg arm)"/>
+      <arg name="end_effector" value="$(arg end_effector)"/>
+      <arg name="ft_sensor" value="$(arg ft_sensor)"/>
+      <arg name="laser_model" value="$(arg laser_model)"/>
+      <arg name="camera_model" value="$(arg camera_model)"/>
+      <arg name="multi" value="$(arg multi)"/>
+      <arg name="gzpose" value="$(arg gzpose)"/>
+      <arg name="base_type" value="$(arg base_type)"/>
+      <arg name="slow_control_period" value="$(arg slow_control_period)"/>
+      <arg name="has_screen" value="$(arg has_screen)"/>
+    </include>
 
-  <!-- Bringup (controllers) -->
-  <include file="$(find tiago_gazebo)/launch/simulation_tiago_bringup.launch">
-    <arg name="arm" value="$(arg arm)"/>
-    <arg name="end_effector" value="$(arg end_effector)"/>
-    <arg name="ft_sensor" value="$(arg ft_sensor)"/>
-    <arg name="laser_model" value="$(arg laser_model)"/>
-    <arg name="camera_model" value="$(arg camera_model)"/>
-    <arg name="public_sim" value="$(arg public_sim)"/>
-    <arg name="use_moveit_camera" value="$(arg use_moveit_camera)"/>
-    <arg name="use_dynamic_footprint" value="$(arg use_dynamic_footprint)"/>
-    <arg name="base_type" value="$(arg base_type)"/>
-    <arg name="advanced_grasping" value="$(arg advanced_grasping)" unless="$(arg public_sim)"/>
-  </include>
+    <!-- Bringup (controllers) -->
+    <include file="$(find tiago_gazebo)/launch/simulation_tiago_bringup.launch">
+      <arg name="arm" value="$(arg arm)"/>
+      <arg name="end_effector" value="$(arg end_effector)"/>
+      <arg name="ft_sensor" value="$(arg ft_sensor)"/>
+      <arg name="laser_model" value="$(arg laser_model)"/>
+      <arg name="camera_model" value="$(arg camera_model)"/>
+      <arg name="public_sim" value="$(arg public_sim)"/>
+      <arg name="use_moveit_camera" value="$(arg use_moveit_camera)"/>
+      <arg name="use_dynamic_footprint" value="$(arg use_dynamic_footprint)"/>
+      <arg name="base_type" value="$(arg base_type)"/>
+      <arg name="advanced_grasping" value="$(arg advanced_grasping)" unless="$(arg public_sim)"/>
+    </include>
 
-  <!-- Optional: tuck arm -->
-  <group if="$(arg tuck_arm)">
-    <node name="tuck_arm" pkg="tiago_gazebo" type="tuck_arm.py" output="screen"/>
+    <!-- Tuck arm -->
+    <group if="$(arg tuck_arm)">
+      <node name="tuck_arm" pkg="tiago_gazebo" type="tuck_arm.py" output="screen"/>
+    </group>
+  </group>
+
+  <!-- Spawn Tiago++ (dual-arm) -->
+  <group if="$(eval arg('robot') == 'tiago++')">
+    <include file="$(find tiago_dual_gazebo)/launch/tiago_dual_spawn.launch">
+      <arg name="arm_left" value="true"/>
+      <arg name="arm_right" value="true"/>
+      <arg name="end_effector_left" value="$(arg end_effector_left)"/>
+      <arg name="end_effector_right" value="$(arg end_effector_right)"/>
+      <arg name="ft_sensor_left" value="$(arg ft_sensor_left)"/>
+      <arg name="ft_sensor_right" value="$(arg ft_sensor_right)"/>
+      <arg name="laser_model" value="$(arg laser_model)"/>
+      <arg name="camera_model" value="$(arg camera_model)"/>
+      <arg name="multi" value="$(arg multi)"/>
+      <arg name="gzpose" value="$(arg gzpose)"/>
+    </include>
+
+    <!-- Bringup (controllers) -->
+    <include file="$(find tiago_dual_gazebo)/launch/simulation_tiago_dual_bringup.launch">
+      <arg name="arm_left" value="true"/>
+      <arg name="arm_right" value="true"/>
+      <arg name="end_effector_left" value="$(arg end_effector_left)"/>
+      <arg name="end_effector_right" value="$(arg end_effector_right)"/>
+      <arg name="ft_sensor_left" value="$(arg ft_sensor_left)"/>
+      <arg name="ft_sensor_right" value="$(arg ft_sensor_right)"/>
+      <arg name="laser_model" value="$(arg laser_model)"/>
+      <arg name="camera_model" value="$(arg camera_model)"/>
+      <arg name="public_sim" value="$(arg public_sim)"/>
+      <arg name="use_moveit_camera" value="$(arg use_moveit_camera)"/>
+    </include>
+
+    <!-- Tuck both arms -->
+    <group if="$(arg tuck_arm)">
+      <node name="tuck_arm" pkg="tiago_dual_gazebo" type="tuck_arm.py" output="screen"/>
+    </group>
   </group>
 
   <!-- Keep consistent with tiago_gazebo.launch -->

@@ -1,0 +1,19 @@
+# Goal
+float64 goal_open_angle_rad
+bool push_motion
+bool generate_arm_traj
+bool publish_paths
+float64 allowed_planning_time 
+---
+# Result
+bool success
+string message
+nav_msgs/Path base_path
+nav_msgs/Path handle_path
+trajectory_msgs/JointTrajectory arm_trajectory
+float64[] base_times  # time_from_start [s] for each base_path waypoint
+---
+# Feedback
+string stage
+float32 progress
+int32 expanded_states
