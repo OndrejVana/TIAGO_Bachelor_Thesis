@@ -130,6 +130,20 @@ roslaunch tiago_door_bringup main.launch
 roslaunch tiago_door_bringup main.launch simulation:=false
 ```
 
+- Set ROS master to the robot (see robot manual, pages 63–64):
+
+```bash
+export ROS_MASTER_URI=http://tiago-114c:11311
+
+# Ethernet
+export ROS_IP=10.68.0.128
+
+# Wi-Fi
+export ROS_IP=192.168.251.123
+```
+
+- For detailed information about packgage deployment refer to [robot_deployment.md](../../../../robot_deployment.md)
+
 ## RViz Configuration
 
 A default RViz configuration is available at `rviz/tiago_door_nav.rviz`. Create your own:

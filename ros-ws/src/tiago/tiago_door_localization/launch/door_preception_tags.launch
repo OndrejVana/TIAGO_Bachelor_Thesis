@@ -12,6 +12,7 @@
     <param name="tag_debug" value="0"/>
     <param name="max_hamming_dist" value="2"/>
     <param name="publish_tag_detections_image" value="true"/>
+    <param name="queue_size" value="30"/>
     <rosparam param="tag_bundles">[]</rosparam>
     <rosparam param="standalone_tags">
       [

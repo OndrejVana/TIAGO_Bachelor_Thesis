@@ -110,7 +110,7 @@
     <param name="tf_publisher_rate" value="30.0" />
   </node>
 
-  <node name="slam_pose_publisher" pkg="tiago_slam_foundation" type="tf_to_pose.py" output="screen">
+  <node name="slam_pose_publisher" pkg="tiago_slam" type="tf_to_pose.py" output="screen">
     <param name="from_frame" value="$(arg map_frame)" />
     <param name="to_frame"   value="$(arg base_frame)" />
     <param name="output_topic" value="/slam_pose" />

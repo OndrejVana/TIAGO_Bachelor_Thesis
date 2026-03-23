@@ -339,7 +339,7 @@ def _get_active_joint_names(group_name):
             "Start MoveIt before running the generator."
         )
     moveit_commander.roscpp_initialize(sys.argv)
-    group = moveit_commander.MoveGroupCommander(group_name)
+    group = moveit_commander.MoveGroupCommander(group_name, wait_for_servers=120.0)
     names = list(group.get_active_joints())
     rospy.loginfo("[QualityMap] Joints for '%s': %s", group_name, names)
     return names

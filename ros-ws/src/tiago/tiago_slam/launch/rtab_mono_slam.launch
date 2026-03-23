@@ -104,7 +104,7 @@
   </node>
 
   <!-- Convert map->base_footprint TF to /slam_pose topic -->
-  <node name="slam_pose_publisher" pkg="tiago_slam_foundation" type="tf_to_pose.py" output="screen">
+  <node name="slam_pose_publisher" pkg="tiago_slam" type="tf_to_pose.py" output="screen">
     <param name="from_frame" value="$(arg map_frame)" />
     <param name="to_frame"   value="$(arg base_frame)" />
     <param name="output_topic" value="/slam_pose" />
