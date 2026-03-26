@@ -32,7 +32,7 @@ planning:
   grasp_approach_offset: 0.05 # m - pull EE back from handle along approach axis
   grasp_lateral_offset: -0.05 # m - shift EE perpendicular to approach; negative = right
   arm_ik_n_per_segment: 3
-  grasp_wrist_roll_rad: -1.5708 # rad - palm orientation (-pi/2 = palm-down grasp)
+  grasp_wrist_roll_rad: -1.5708 # rad - palm orientation required for kinematic feasibility of right arm throughout full door-opening arc
   grasp_yaw_offset_rad: -1.5708 # rad - constant yaw offset applied to EE orientation;
   
   grasp_offset_x: 0.0
@@ -88,11 +88,17 @@ planner:
   reachability_y_exclusion_half_width_m: 0.0
   use_grasp_yaw: true
   grasp_yaw_offset_rad: -1.5708 # rad - must match planning/grasp_yaw_offset_rad
+
+  # Per-arm grasp yaw offsets for Tiago++ dual-arm mode.
+  # Right arm (hinge_left door): palm faces left (-pi/2) to grasp the handle.
+  # Left arm (hinge_right door): palm faces right (0) to grasp the handle.
+  grasp_yaw_offset_rad_right_arm: -1.5708
+  grasp_yaw_offset_rad_left_arm:   0.0
   
   # Search configuration
   use_anytime: true
   w_astar: 2.0
-  ara_eps_start: 8.0
+  ara_eps_start: 3.0
   ara_eps_end: 1.0
   ara_eps_step: 1.0
   goal_open_angle_rad: 1.047 # 60 degrees
@@ -116,6 +122,10 @@ costs:
   
   arm_centerline_danger_m: 0.20
   arm_centerline_penalty: 30.0
+
+  w_reverse_straight: 5.0 # straight "rev" primitive
+  w_reverse_arc: 2.0 # arcRevL / arcRevR (pull-door backing arcs)
+  w_rotation: 10.0 # rotL / rotR in-place spins
 
 moveit:
   group: arm_torso   # fallback / single-arm Tiago

@@ -7,7 +7,7 @@
 
     <param name="action_name" value="/tiago_move_base/move_base"/>
     <param name="default_frame" value="map"/>
-    <param name="wait_for_server" value="5.0"/>
+    <param name="wait_for_server" value="30.0"/>
     <param name="stamp_now" value="true"/>
   </node>
 </launch>

@@ -62,7 +62,7 @@
           enabled_topic: "/door_mask/enabled"
           door_pose_topic: "/door/doorway_pose_map"  # PoseStamped in map frame
           width_m: 1.0
-          thickness_m: 0.3
+          thickness_m: 0.6
           margin_m: 0.25
           set_unknown_instead_of_free: false
 
@@ -107,7 +107,7 @@
           enabled_topic: "/door_mask/enabled"
           door_pose_topic: "/door/doorway_pose_map"  # PoseStamped in map frame
           width_m: 1.0
-          thickness_m: 0.3
+          thickness_m: 0.6
           margin_m: 0.25
           set_unknown_instead_of_free: false
 

@@ -229,7 +229,15 @@ class DoorPlanningServer(object):
             unseeded_max_jump_rad=unseeded_max_jump_rad,
             ik_max_consecutive_gap=ik_max_consecutive_gap,
         )
-        ik = MoveItWaypointIK(arm_cfg)
+        try:
+            ik = MoveItWaypointIK(arm_cfg)
+        except RuntimeError as e:
+            rospy.logwarn(
+                "[PlanningServer] MoveIt group '%s' not found, skipping default IK "
+                "(expected for Tiago++ which uses per-arm planners): %s",
+                moveit_group, e,
+            )
+            ik = None
         return arm_cfg, ik
 
     def _create_arm_specific_planner(self, arm):
@@ -254,9 +262,17 @@ class DoorPlanningServer(object):
 
         rospy.loginfo("[PlanningServer] Building %s-arm planner (map: %s)", arm, map_path)
 
-        # Clone the base planner config and point it at the arm-specific map.
         cfg = PlannerConfig.from_rosparams("~")
         cfg.reachability_map_path = map_path
+
+        offset_param = "~planner/grasp_yaw_offset_rad_{}_arm".format(arm)
+        if rospy.has_param(offset_param):
+            cfg.grasp_yaw_offset_rad = float(rospy.get_param(offset_param))
+            rospy.loginfo(
+                "[PlanningServer] %s-arm grasp_yaw_offset_rad overridden to %.4f rad",
+                arm, cfg.grasp_yaw_offset_rad,
+            )
+
         planner = PlannerCore(cfg, door_model=self._door_model)
 
         # Build the arm-specific MoveIt IK runner.
@@ -718,14 +734,16 @@ class DoorPlanningServer(object):
                 hinge_side, active_arm,
             )
 
-            # Swap to the arm-specific planner/IK so all helper methods
-            # (which reference self._planner / self._ik) use the correct arm.
             if active_arm == "right" and self._planner_right is not None:
                 self._planner = self._planner_right
                 self._ik      = self._ik_right
             elif active_arm == "left" and self._planner_left is not None:
                 self._planner = self._planner_left
                 self._ik      = self._ik_left
+
+
+            if self._occ is not None:
+                self._planner.set_occupancy(self._occ, occ_threshold=self._occ_thresh)
 
             base_start = self._get_base_pose()
 
@@ -751,6 +769,7 @@ class DoorPlanningServer(object):
                 base_path.poses.insert(0, base_start)
                 angles_rad = [0.0] + list(angles_rad)
 
+
             self._log_base_plan_summary(base_path, angles_rad)
 
             self._publish_feedback(fb, "building_handle_path", 0.5, fb.expanded_states)
@@ -767,11 +786,15 @@ class DoorPlanningServer(object):
                 handle_pose.pose.position.y - hinge_pose.pose.position.y,
                 handle_pose.pose.position.x - hinge_pose.pose.position.x,
             )
+
+            if not goal.push_motion:
+                hinge_yaw = hinge_yaw + np.pi
             rospy.loginfo(
-                "[PlanningServer] hinge_yaw = %.3f rad (%.1f deg) from hinge (%.3f, %.3f) to handle (%.3f, %.3f)",
+                "[PlanningServer] hinge_yaw = %.3f rad (%.1f deg) from hinge (%.3f, %.3f) to handle (%.3f, %.3f)%s",
                 hinge_yaw, np.degrees(hinge_yaw),
                 hinge_pose.pose.position.x, hinge_pose.pose.position.y,
                 handle_pose.pose.position.x, handle_pose.pose.position.y,
+                " [pull: flipped by pi]" if not goal.push_motion else "",
             )
 
             sparse_ee_target_path = self._build_ee_target_path(

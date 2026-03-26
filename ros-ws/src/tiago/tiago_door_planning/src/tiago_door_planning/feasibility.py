@@ -110,7 +110,7 @@ class LambdaComputer(object):
         return out
 
     def _make_cache_key(self, base_xy, base_yaw, hinge_xy, hinge_yaw,
-                        handle_radius, opening_sign):
+                        handle_radius, opening_sign, grasp_yaw_extra_offset):
         """
         Build cache key from quantized geometric inputs.
         """
@@ -123,6 +123,7 @@ class LambdaComputer(object):
             int(round(hinge_yaw * 100.0)),
             int(round(handle_radius * 100.0)),
             int(round(float(opening_sign) * 10.0)),
+            int(round(float(grasp_yaw_extra_offset) * 100.0)),
         )
 
     def _sample_angles_rad(self):
@@ -160,9 +161,12 @@ class LambdaComputer(object):
         )
         return door_yaws, handle_positions
 
-    def _compute_reachable_mask(self, base_xy, base_yaw, door_yaws, handle_positions):
+    def _compute_reachable_mask(self, base_xy, base_yaw, door_yaws, handle_positions,
+                                grasp_yaw_extra_offset=0.0):
         """
         Evaluate reachability backend for all sampled handle poses.
+        grasp_yaw_extra_offset is added to grasp_yaw only (not handle positions).
+        Pass np.pi for pull doors so the robot faces the handle from the correct side.
         """
         n = len(door_yaws)
         reachable = np.zeros(n, dtype=bool)
@@ -176,6 +180,7 @@ class LambdaComputer(object):
 
             grasp_yaw = angle_wrap(
                 float(door_yaws[i]) + float(self.cfg.grasp_yaw_offset_rad)
+                + float(grasp_yaw_extra_offset)
             )
 
             debug_this = (i == 0)
@@ -219,15 +224,19 @@ class LambdaComputer(object):
         return feasible
 
     def compute(self, base_xy, base_yaw, hinge_xy, hinge_yaw, handle_radius,
-                door_geom, occ_grid, occ_thresh, opening_sign=1.0):
+                door_geom, occ_grid, occ_thresh, opening_sign=1.0,
+                grasp_yaw_extra_offset=0.0):
         """
         Returns LambdaResult containing interval-connected feasible angle sets.
+        grasp_yaw_extra_offset is added to grasp_yaw only, not handle positions.
+        Pass np.pi for pull doors to flip the approach direction.
         """
         t0 = time_module.time()
         self._stats["compute_calls"] += 1
 
         k = self._make_cache_key(
-            base_xy, base_yaw, hinge_xy, hinge_yaw, handle_radius, opening_sign
+            base_xy, base_yaw, hinge_xy, hinge_yaw, handle_radius, opening_sign,
+            grasp_yaw_extra_offset
         )
 
         if k in self._cache:
@@ -241,7 +250,8 @@ class LambdaComputer(object):
         )
 
         reachable = self._compute_reachable_mask(
-            base_xy, base_yaw, door_yaws, handle_positions
+            base_xy, base_yaw, door_yaws, handle_positions,
+            grasp_yaw_extra_offset=grasp_yaw_extra_offset
         )
 
         feasible = self._compute_feasible_mask(

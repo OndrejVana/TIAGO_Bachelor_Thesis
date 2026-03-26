@@ -144,7 +144,12 @@ class PlannerCore(object):
             yaw=yaw_from_quat(base_start.pose.orientation),
         )
 
-    def _make_lambda_for_pose_xyyaw(self, hx, hy, hinge_yaw, handle_radius, opening_sign):
+    def _make_lambda_for_pose_xyyaw(self, hx, hy, hinge_yaw, handle_radius, opening_sign,
+                                    push_motion=True):
+        # Pull doors: the robot must approach from the opposite side (grasp direction flipped).
+        # Add pi to grasp_yaw only — handle positions are still computed from the true hinge yaw.
+        grasp_yaw_extra_offset = 0.0 if bool(push_motion) else np.pi
+
         lambda_state_cache = {}
 
         def lambda_for_pose_xyyaw(x, y, yaw):
@@ -157,6 +162,7 @@ class PlannerCore(object):
                 int(round(float(hinge_yaw) * 1000.0)),
                 int(round(float(handle_radius) * 1000.0)),
                 int(round(float(opening_sign) * 10.0)),
+                int(round(float(grasp_yaw_extra_offset) * 100.0)),
             )
             if key in lambda_state_cache:
                 return lambda_state_cache[key]
@@ -171,6 +177,7 @@ class PlannerCore(object):
                 occ_grid=self._occ,
                 occ_thresh=self._occ_thresh,
                 opening_sign=opening_sign,
+                grasp_yaw_extra_offset=grasp_yaw_extra_offset,
             )
             lambda_state_cache[key] = lam
             return lam
@@ -309,7 +316,8 @@ class PlannerCore(object):
 
         return True, surviving_angles, None
 
-    def _compute_step_cost(self, base_samples_ps, angles_per_pose, handle_pose_from_angle, hinge_pose_map):
+    def _compute_step_cost(self, base_samples_ps, angles_per_pose, handle_pose_from_angle,
+                           hinge_pose_map, primitive_kind="fwd"):
         return transition_cost(
             occ=self._occ,
             base_pose_samples=base_samples_ps,
@@ -317,6 +325,7 @@ class PlannerCore(object):
             handle_pose_from_angle_fn=handle_pose_from_angle,
             hinge_pose_map=hinge_pose_map,
             cfg=self.cfg.cost,
+            primitive_kind=primitive_kind,
         )
 
     def _append_motion_successor(self, samples, interval_d, out, step_cost, tr):
@@ -372,7 +381,7 @@ class PlannerCore(object):
                     continue
 
                 step_cost = self._compute_step_cost(
-                    base_samples_ps, angles_per_pose, handle_pose_from_angle, hinge_pose_map
+                    base_samples_ps, angles_per_pose, handle_pose_from_angle, hinge_pose_map, kind
                 )
 
                 if not np.isfinite(step_cost) or step_cost >= 1e9:
@@ -531,7 +540,7 @@ class PlannerCore(object):
         start_p = self._base_start_to_pose2d(base_start)
 
         lambda_for_pose_xyyaw, lambda_state_cache = self._make_lambda_for_pose_xyyaw(
-            hx, hy, hinge_yaw, handle_radius, opening_sign
+            hx, hy, hinge_yaw, handle_radius, opening_sign, push_motion=push_motion
         )
         lambda_for_state = self._make_lambda_for_state(lambda_for_pose_xyyaw)
 

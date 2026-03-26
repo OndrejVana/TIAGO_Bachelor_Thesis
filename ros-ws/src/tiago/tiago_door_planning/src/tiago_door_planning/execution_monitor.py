@@ -274,20 +274,11 @@ def _check_sample_pair(s0, s1, sample_index, monitor_cfg, report):
 
 def _check_arm_trajectory_consistency(execution_samples, arm_traj, monitor_cfg, report):
     """
-    Compare arm trajectory timing and length against the execution reference.
+    Compare arm trajectory timing against the execution reference.
+    Point count is intentionally different (arm is densified relative to sparse base samples).
     """
     if arm_traj is None or len(arm_traj.points) == 0:
         return
-
-    arm_point_count = len(arm_traj.points)
-    sample_count = len(execution_samples)
-
-    if arm_point_count != sample_count:
-        _append_warning(
-            report,
-            "Arm trajectory point count (%d) != execution sample count (%d)" %
-            (arm_point_count, sample_count)
-        )
 
     arm_end = arm_traj.points[-1].time_from_start.to_sec()
     ref_end = execution_samples[-1].time_from_start

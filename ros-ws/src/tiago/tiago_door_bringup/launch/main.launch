@@ -3,7 +3,7 @@
   <!-- Global Configuration -->
   <arg name="simulation" default="true" doc="true = Gazebo sim, false = real robot"/>
   <arg name="use_slam" default="true" doc="Enable SLAM for mapping and localization"/>
-  <arg name="use_door_perception" default="false" doc="Enable AprilTag-based door detection"/>
+  <arg name="use_door_perception" default="true" doc="Enable AprilTag-based door detection"/>
   <arg name="use_navigation" default="true" doc="Enable navigation (move_base) control"/>
   <arg name="use_door_planning" default="false" doc="Enable door-opening trajectory planning"/>
   <arg name="use_arm_manipulation" default="true" doc="Enable arm motion planning and gripper control"/>

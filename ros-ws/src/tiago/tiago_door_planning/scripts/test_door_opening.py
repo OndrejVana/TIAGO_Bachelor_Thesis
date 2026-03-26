@@ -66,12 +66,12 @@ def execute(client, plan_result, velocity_scaling):
 def main():
     rospy.init_node("test_door_opening", anonymous=True)
 
-    angle_rad     = float(rospy.get_param("~angle",    1.57))   # rad
+    angle_rad = float(rospy.get_param("~angle", 1.57))   # rad
     velocity_scaling = float(rospy.get_param("~scaling", 0.5))  # 0.1 - 1.0
-    push_motion   = bool(rospy.get_param("~push",      True))
+    push_motion = bool(rospy.get_param("~push", True))
     planning_time = float(rospy.get_param("~plan_time", 60.0))  # s
-    execute_after = bool(rospy.get_param("~execute",   True))   # set False to plan-only
-    generate_arm  = bool(rospy.get_param("~arm",       True))   # set False to skip arm IK
+    execute_after = bool(rospy.get_param("~execute", False))   # set False to plan-only
+    generate_arm = bool(rospy.get_param("~arm", True))   # set False to skip arm IK
 
     # Connect to servers
     rospy.loginfo("[Test] Connecting to planning server...")

@@ -8,7 +8,7 @@ Guide for running bandwidth-heavy nodes (SLAM, perception) on the robot via Dock
 | --- | --- | --- |
 | `rtabmap`, `rgbd_odometry`, `depthimage_to_laserscan` | **Robot (Docker)** | Eliminates raw image stream over WiFi |
 | `apriltag_detector`, door perception nodes | **Robot (Docker)** | Eliminates raw image stream over WiFi |
-| `move_base`, navigation | Laptop | Only needs `/map`, `/odom`, `/scan` — small |
+| `move_base`, `door_approach_goal_generator`, `move_base_goal_sender` | **Robot (Docker)** | TF lookups require robot clock — laptop clock skew causes 45 s costmap timeouts; `DoorMaskLayer` is a compiled C++ plugin that must run on-robot |
 | Behavior tree, planning, arm control | Laptop | Lightweight, no sensor data |
 | RViz | Laptop | Needs display |
 
@@ -77,7 +77,7 @@ cat << 'EOF' > /tmp/build_ws.sh
 #!/bin/bash
 set -e
 cd /tiago_dev_ws
-catkin config --extend /opt/ros/melodic
+catkin config --extend /opt/ros/melodic --blacklist tiago_door_sim
 catkin build
 echo 'Build OK'
 EOF
@@ -120,7 +120,21 @@ docker run --rm --net=host \
   bash -c 'source /tiago_dev_ws/devel/setup.bash && roslaunch tiago_door_localization door_preception_tags.launch'
 EOF
 chmod +x /home/pal/run_perception.sh"
+
+# Navigation script
+ssh root@tiago-114c "cat > /home/pal/run_navigation.sh << 'EOF'
+#!/bin/bash
+docker run --rm --net=host \
+  -v /home/pal/tiago_ws/src:/tiago_dev_ws/src/custom \
+  -v /home/pal/tiago_ws/build:/tiago_dev_ws/build \
+  -v /home/pal/tiago_ws/devel:/tiago_dev_ws/devel \
+  tiago_dev_melodic:latest \
+  bash -c 'source /tiago_dev_ws/devel/setup.bash && roslaunch tiago_move_base_control door_nav.launch'
+EOF
+chmod +x /home/pal/run_navigation.sh"
 ```
+
+> `DoorMaskLayer` is a compiled C++ costmap plugin (`libdoor_mask_layer.so`). It is built during `catkin build` and loaded by `move_base` at runtime via `plugin.xml`. Running on the robot ensures the plugin binary matches the robot's ROS/costmap_2d version and that TF lookups use the robot's clock directly — avoiding the ~45 s clock-skew timeout seen when running `move_base` on a remote laptop.
 
 ---
 
@@ -137,14 +151,27 @@ rsync -av \
   --exclude='.git' \
   ros-ws/src/tiago/ root@tiago-114c:/home/pal/tiago_ws/src/
 
-# Or sync a specific package only
+# Or sync specific packages only
 rsync -av --exclude='__pycache__/' --exclude='*.pyc' \
   ros-ws/src/tiago/tiago_slam/ root@tiago-114c:/home/pal/tiago_ws/src/tiago_slam/
 rsync -av --exclude='__pycache__/' --exclude='*.pyc' \
   ros-ws/src/tiago/tiago_door_localization/ root@tiago-114c:/home/pal/tiago_ws/src/tiago_door_localization/
+rsync -av --exclude='__pycache__/' --exclude='*.pyc' \
+  ros-ws/src/tiago/tiago_move_base_control/ root@tiago-114c:/home/pal/tiago_ws/src/tiago_move_base_control/
 ```
 
-### 2. Run heavy nodes on robot (two SSH terminals)
+**Note:** `tiago_move_base_control` contains a C++ plugin (`DoorMaskLayer`). After syncing, rebuild if you changed any `.cpp` or `.h` file. Python-only changes (scripts/, config/, launch/) do **not** require a rebuild.
+
+```bash
+ssh root@tiago-114c "docker run --rm --net=host \
+  -v /home/pal/tiago_ws/src:/tiago_dev_ws/src/custom \
+  -v /home/pal/tiago_ws/build:/tiago_dev_ws/build \
+  -v /home/pal/tiago_ws/devel:/tiago_dev_ws/devel \
+  tiago_dev_melodic:latest \
+  bash -c 'source /opt/ros/melodic/setup.bash && cd /tiago_dev_ws && catkin build tiago_move_base_control'"
+```
+
+### 2. Run nodes on robot (three SSH terminals)
 
 ```bash
 # Terminal 1 — SLAM
@@ -152,6 +179,9 @@ ssh root@tiago-114c "/home/pal/run_slam.sh"
 
 # Terminal 2 — Door perception
 ssh root@tiago-114c "/home/pal/run_perception.sh"
+
+# Terminal 3 — Navigation (move_base + door approach)
+ssh root@tiago-114c "/home/pal/run_navigation.sh"
 ```
 
 ### 3. Launch remaining nodes on your laptop
@@ -163,8 +193,11 @@ export ROS_IP=192.168.251.123
 roslaunch tiago_door_bringup main.launch \
   simulation:=false \
   use_slam:=false \
-  use_door_perception:=false
+  use_door_perception:=false \
+  use_navigation:=false
 ```
+
+> `use_navigation:=false` skips launching `tiago_move_base_control` on the laptop since it is now running on the robot.
 
 ---
 

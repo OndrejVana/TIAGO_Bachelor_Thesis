@@ -20,7 +20,10 @@ class CostConfig(object):
                  arm_max_dist=0.85,
                  arm_hard_penalty=1e3,
                  arm_centerline_danger_m=0.0,
-                 arm_centerline_penalty=0.0):
+                 arm_centerline_penalty=0.0,
+                 w_reverse_straight=5.0,
+                 w_reverse_arc=2.0,
+                 w_rotation=10.0):
         self.occ_threshold = occ_threshold
         self.unknown_cost = unknown_cost
         self.occ_cost = occ_cost
@@ -33,6 +36,9 @@ class CostConfig(object):
         self.arm_hard_penalty = arm_hard_penalty
         self.arm_centerline_danger_m = float(arm_centerline_danger_m)
         self.arm_centerline_penalty = float(arm_centerline_penalty)
+        self.w_reverse_straight = float(w_reverse_straight)
+        self.w_reverse_arc = float(w_reverse_arc)
+        self.w_rotation = float(w_rotation)
 
 
 # =========================
@@ -245,22 +251,35 @@ def _compute_arm_costs(base_pose_samples, lambda_angles_per_pose, hinge_pose_map
     return arm_costs
 
 
-def _aggregate_transition_costs(costmap_costs, arm_costs, cfg):
+def _aggregate_transition_costs(costmap_costs, arm_costs, cfg, primitive_kind="fwd"):
     """
     Combine costmap and arm costs into final transition cost.
+    Applies additive penalties for reverse and in-place rotation primitives
+    to discourage oscillation while keeping them available when genuinely needed.
     """
     worst_arm = float(np.max(arm_costs)) if arm_costs else 0.0
     sum_costmap = float(np.sum(costmap_costs))
 
-    return cfg.w_costmap * sum_costmap + cfg.w_arm * worst_arm
+    base = cfg.w_costmap * sum_costmap + cfg.w_arm * worst_arm
+
+    if primitive_kind == "rev":
+        base += cfg.w_reverse_straight
+    elif primitive_kind in ("arcRevL", "arcRevR"):
+        base += cfg.w_reverse_arc
+    elif primitive_kind in ("rotL", "rotR"):
+        base += cfg.w_rotation
+
+    return base
 
 
-def transition_cost(occ, base_pose_samples, lambda_angles_per_pose, handle_pose_from_angle_fn, hinge_pose_map, cfg):
+def transition_cost(occ, base_pose_samples, lambda_angles_per_pose, handle_pose_from_angle_fn,
+                    hinge_pose_map, cfg, primitive_kind="fwd"):
     """
     For each pose along the action:
         - Take min over feasible angles of arm_cost.
         - Then take max over poses (worst point along the action)
         - Add costmap costs along the samples.
+        - Add primitive-type penalty (reverse / rotation).
     """
     if len(base_pose_samples) != len(lambda_angles_per_pose):
         raise ValueError("base_pose_samples and lambda list lengths differ")
@@ -278,4 +297,4 @@ def transition_cost(occ, base_pose_samples, lambda_angles_per_pose, handle_pose_
     if arm_costs is None:
         return np.inf
 
-    return _aggregate_transition_costs(costmap_costs, arm_costs, cfg)
+    return _aggregate_transition_costs(costmap_costs, arm_costs, cfg, primitive_kind)

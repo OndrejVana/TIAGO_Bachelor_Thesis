@@ -118,7 +118,16 @@
 
     <!-- Tuck both arms -->
     <group if="$(arg tuck_arm)">
-      <node name="tuck_arm" pkg="tiago_dual_gazebo" type="tuck_arm.py" output="screen"/>
+      <!-- Ensure arm controller joints params are available for play_motion discovery -->
+      <rosparam param="arm_right_controller/joints">
+        [arm_right_1_joint, arm_right_2_joint, arm_right_3_joint, arm_right_4_joint,
+         arm_right_5_joint, arm_right_6_joint, arm_right_7_joint]
+      </rosparam>
+      <rosparam param="arm_left_controller/joints">
+        [arm_left_1_joint, arm_left_2_joint, arm_left_3_joint, arm_left_4_joint,
+         arm_left_5_joint, arm_left_6_joint, arm_left_7_joint]
+      </rosparam>
+      <node name="tuck_arm" pkg="tiago_door_sim" type="tuck_arm.py" output="screen"/>
     </group>
   </group>
 

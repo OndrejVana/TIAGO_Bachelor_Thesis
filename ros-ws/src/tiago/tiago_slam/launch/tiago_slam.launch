@@ -43,8 +43,8 @@
     <remap from="imu"                     to="/base_imu"/>
 
     <param name="approx_sync"             value="true"/>
-    <param name="queue_size"              value="50"/>
-    <param name="approx_sync_max_interval" value="0.05"/>
+    <param name="queue_size"              value="100"/>
+    <param name="approx_sync_max_interval" value="0.1"/>
 
     <param name="Reg/Force3DoF"   value="true"/>
     <param name="Vis/MinInliers"  value="12"/>
@@ -75,8 +75,8 @@
     <remap from="imu"                      to="/base_imu"/>
 
     <param name="approx_sync"              value="true"/>
-    <param name="queue_size"               value="100"/>
-    <param name="approx_sync_max_interval" value="0.05"/>
+    <param name="queue_size"               value="200"/>
+    <param name="approx_sync_max_interval" value="0.1"/>
 
     <param name="RGBD/LinearUpdate"  value="0.2"/>
     <param name="RGBD/AngularUpdate" value="0.15"/>
@@ -100,7 +100,7 @@
   <node name="rtabmap_map_relay"
         pkg="topic_tools"
         type="relay"
-        args="/rtabmap/grid_map /map"
+        args="/grid_map /map"
         output="screen"/>
 
   <node name="slam_pose_publisher" pkg="tiago_slam" type="tf_to_pose.py" output="screen">
@@ -109,5 +109,4 @@
     <param name="output_topic" value="/slam_pose"/>
     <param name="rate"         value="10.0"/>
   </node>
-
 </launch>

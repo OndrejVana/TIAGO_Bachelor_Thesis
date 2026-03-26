@@ -52,9 +52,9 @@ models:
   "1":
     door_normal_axis_tag: "z"
     hinge_axis_tag: "y"
-    hinge_offset_xyz:  [-0.75, -1.2, 0.0]
+    hinge_offset_xyz:  [0.75, 1.2, 0.0]
     hinge_offset_rpy:  [0.0, 0.0, 0.0]
-    handle_offset_xyz: [0.1, -0.2, 0.10]
+    handle_offset_xyz: [0.0, 0.2, 0.10]
     handle_offset_rpy: [0.0, 0.0, 0.0]
     door_width_m: 0.9
     handle_radius_m: 0.70
@@ -64,9 +64,9 @@ models:
   "2":
     door_normal_axis_tag: "z"
     hinge_axis_tag: "y"
-    hinge_offset_xyz:  [-0.75, -1.2, 0.0]
+    hinge_offset_xyz:  [-0.75, 1.2, 0.0]
     hinge_offset_rpy:  [0.0, 0.0, 0.0]
-    handle_offset_xyz: [0.1, -0.2, 0.10]
+    handle_offset_xyz: [0.0, 0.2, 0.10]
     handle_offset_rpy: [0.0, 0.0, 0.0]
     door_width_m: 0.9
     handle_radius_m: 0.70
@@ -76,9 +76,9 @@ models:
   "3":
     door_normal_axis_tag: "z"
     hinge_axis_tag: "y"
-    hinge_offset_xyz:  [-0.75, 1.2, 0.0]
+    hinge_offset_xyz:  [0.75, 1.2, 0.0]
     hinge_offset_rpy:  [0.0, 0.0, 0.0]
-    handle_offset_xyz: [0.1, 0.2, 0.10]
+    handle_offset_xyz: [0.0, 0.2, 0.10]
     handle_offset_rpy: [0.0, 0.0, 0.0]
     door_width_m: 0.9
     handle_radius_m: 0.70

@@ -201,6 +201,15 @@ class PlannerConfig(object):
         cfg.cost.arm_centerline_penalty = float(
             gp("costs/arm_centerline_penalty", cfg.cost.arm_centerline_penalty)
         )
+        cfg.cost.w_reverse_straight = float(
+            gp("costs/w_reverse_straight", cfg.cost.w_reverse_straight)
+        )
+        cfg.cost.w_reverse_arc = float(
+            gp("costs/w_reverse_arc", cfg.cost.w_reverse_arc)
+        )
+        cfg.cost.w_rotation = float(
+            gp("costs/w_rotation", cfg.cost.w_rotation)
+        )
 
         cfg.monotonic_angle_tol_rad = float(
             gp("planner/monotonic_angle_tol_rad", cfg.monotonic_angle_tol_rad)

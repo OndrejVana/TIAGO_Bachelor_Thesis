@@ -24,6 +24,7 @@ from tiago_door_planning.msg import (
     ExecuteDoorOpeningResult,
     ExecuteDoorOpeningFeedback,
 )
+from sensor_msgs.msg import JointState
 from tiago_door_planning.utils import angle_wrap
 
 
@@ -66,10 +67,15 @@ class DoorExecutionServer(object):
         self._kp_linear = float(rospy.get_param("~kp_linear", 1.0))
         self._kp_angular = float(rospy.get_param("~kp_angular", 2.0))
 
-        # External interfaces
-        self._arm_controller = rospy.get_param(
-            "~arm_controller",
-            "/arm_controller/follow_joint_trajectory"
+        # External interfaces — dual-arm (Tiago++) or single-arm fallback
+        _arm_legacy = rospy.get_param("~arm_controller", "")
+        self._arm_controller_right = rospy.get_param(
+            "~arm_controller_right",
+            _arm_legacy if _arm_legacy else "/arm_right_controller/follow_joint_trajectory",
+        )
+        self._arm_controller_left = rospy.get_param(
+            "~arm_controller_left",
+            _arm_legacy if _arm_legacy else "/arm_left_controller/follow_joint_trajectory",
         )
         self._torso_controller = rospy.get_param(
             "~torso_controller",
@@ -91,6 +97,10 @@ class DoorExecutionServer(object):
         self._ee_path_sub = rospy.Subscriber(
             "/door_plan/ee_target_path", Path, self._ee_path_callback, queue_size=1
         )
+        self._current_joint_state = None
+        self._joint_state_sub = rospy.Subscriber(
+            "/joint_states", JointState, self._joint_state_callback, queue_size=1
+        )
 
     def _init_tf(self):
         self._tf_buffer = tf2_ros.Buffer(cache_time=rospy.Duration(10.0))
@@ -98,20 +108,34 @@ class DoorExecutionServer(object):
         self._tf_broadcaster = tf2_ros.TransformBroadcaster()
 
     def _init_arm_client(self):
-        self._arm_client = actionlib.SimpleActionClient(
-            self._arm_controller, FollowJointTrajectoryAction
+        self._arm_client_right = actionlib.SimpleActionClient(
+            self._arm_controller_right, FollowJointTrajectoryAction
+        )
+        self._arm_client_left = actionlib.SimpleActionClient(
+            self._arm_controller_left, FollowJointTrajectoryAction
         )
         self._torso_client = actionlib.SimpleActionClient(
             self._torso_controller, FollowJointTrajectoryAction
         )
+        self._arm_client = self._arm_client_right
 
-        for name, client in [(self._arm_controller, self._arm_client),
-                              (self._torso_controller, self._torso_client)]:
+        for name, client in [
+            (self._arm_controller_right, self._arm_client_right),
+            (self._arm_controller_left,  self._arm_client_left),
+            (self._torso_controller,     self._torso_client),
+        ]:
             rospy.loginfo("Waiting for controller: %s", name)
             if not client.wait_for_server(rospy.Duration(10.0)):
                 rospy.logwarn("Controller not available at startup: %s", name)
             else:
                 rospy.loginfo("Connected to controller: %s", name)
+
+    def _select_arm_client_for_joints(self, joint_names):
+        """Pick right or left arm client based on joint name convention."""
+        for jn in joint_names:
+            if "left" in jn:
+                return self._arm_client_left
+        return self._arm_client_right
 
     def _init_action_server(self):
         self._as = actionlib.SimpleActionServer(
@@ -132,6 +156,77 @@ class DoorExecutionServer(object):
 
     def _ee_path_callback(self, msg):
         self._ee_target_path = msg
+
+    def _joint_state_callback(self, msg):
+        self._current_joint_state = msg
+
+    def _get_current_arm_joints(self, joint_names):
+        if self._current_joint_state is None:
+            return None
+        js = self._current_joint_state
+        try:
+            return [js.position[js.name.index(n)] for n in joint_names]
+        except ValueError as e:
+            rospy.logwarn("[Execution] Joint not found in joint_state: %s", e)
+            return None
+
+    def _approach_arm_to_start(self, arm_traj, approach_time):
+        """Move arm from current position to the first trajectory waypoint."""
+        if not arm_traj.points:
+            return True
+        current_joints = self._get_current_arm_joints(arm_traj.joint_names)
+        if current_joints is None:
+            rospy.logwarn("[Execution] No joint state available — skipping arm pre-approach")
+            return True
+
+        first_pt = arm_traj.points[0]
+        approach = JointTrajectory()
+        approach.header.stamp = rospy.Time(0)
+        approach.joint_names = arm_traj.joint_names
+
+        pt0 = JointTrajectoryPoint()
+        pt0.positions = current_joints
+        pt0.velocities = [0.0] * len(current_joints)
+        pt0.time_from_start = rospy.Duration(0.0)
+
+        pt1 = JointTrajectoryPoint()
+        pt1.positions = list(first_pt.positions)
+        pt1.velocities = [0.0] * len(first_pt.positions)
+        pt1.time_from_start = rospy.Duration(approach_time)
+
+        approach.points = [pt0, pt1]
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory = approach
+        goal.goal_time_tolerance = rospy.Duration(5.0)
+
+        arm_client = self._select_arm_client_for_joints(arm_traj.joint_names)
+        arm_client.send_goal(goal)
+        rospy.loginfo("[Execution] Arm pre-approach: %.1fs to start configuration", approach_time)
+
+        TERMINAL = (
+            actionlib.GoalStatus.SUCCEEDED,
+            actionlib.GoalStatus.ABORTED,
+            actionlib.GoalStatus.PREEMPTED,
+            actionlib.GoalStatus.REJECTED,
+        )
+        deadline = rospy.Time.now() + rospy.Duration(approach_time + 10.0)
+        rate = rospy.Rate(10.0)
+        while not rospy.is_shutdown():
+            if self._is_preempt_requested():
+                arm_client.cancel_goal()
+                return False
+            if rospy.Time.now() > deadline:
+                rospy.logwarn("[Execution] Arm pre-approach timed out")
+                return False
+            state = arm_client.get_state()
+            if state in TERMINAL:
+                if state == actionlib.GoalStatus.SUCCEEDED:
+                    rospy.loginfo("[Execution] Arm pre-approach completed")
+                    return True
+                rospy.logwarn("[Execution] Arm pre-approach failed: state=%d", state)
+                return False
+            rate.sleep()
+        return False
 
     def _find_arm_traj_index(self, arm_traj, t_unscaled):
         """Return the arm trajectory waypoint index at unscaled time t_unscaled."""
@@ -261,7 +356,8 @@ class DoorExecutionServer(object):
 
     def _cancel_all_motion(self):
         self._stop_base()
-        self._arm_client.cancel_all_goals()
+        self._arm_client_right.cancel_all_goals()
+        self._arm_client_left.cancel_all_goals()
         self._torso_client.cancel_all_goals()
 
     def _is_preempt_requested(self):
@@ -450,7 +546,7 @@ class DoorExecutionServer(object):
         if arm_sub:
             goal = FollowJointTrajectoryGoal()
             goal.trajectory = arm_sub
-            self._arm_client.send_goal(goal)
+            self._select_arm_client_for_joints(arm_sub.joint_names).send_goal(goal)
 
         if torso_sub:
             goal = FollowJointTrajectoryGoal()
@@ -585,6 +681,7 @@ class DoorExecutionServer(object):
                 JointTolerance(name=n, position=0.05) for n in arm_sub.joint_names
             ]
             goal.goal_time_tolerance = rospy.Duration(3.0)
+            self._arm_client = self._select_arm_client_for_joints(arm_sub.joint_names)
             self._arm_client.send_goal(goal)
             rospy.loginfo("[Execution] Arm trajectory sent: %d points, duration=%.2fs",
                           len(arm_sub.points),
@@ -743,6 +840,15 @@ class DoorExecutionServer(object):
         )
 
         arm = arm_traj if self._has_arm_trajectory(arm_traj) else None
+
+        # Move arm from tuck to pre-grasp position before synchronized execution.
+        if arm is not None:
+            approach_time = float(rospy.get_param("~arm_approach_time", 5.0))
+            if not self._approach_arm_to_start(arm, approach_time):
+                result.message = "Arm pre-approach failed"
+                self._as.set_aborted(result)
+                return
+
         t_start = rospy.Time.now()
 
         if arm is not None:
