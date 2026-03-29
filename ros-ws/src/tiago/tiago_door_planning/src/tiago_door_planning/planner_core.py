@@ -20,7 +20,7 @@ from .lattice import (
 )
 from .feasibility import LambdaComputer, FeasConfig
 from .door_collision import DoorGeom, circle_hits_occupancy
-from .search_core import ara_star, weighted_astar, SearchResult
+from .search_core import eps_schedule_search, weighted_astar, SearchResult
 from .costs import CostConfig, transition_cost, pick_best_angle
 from .door_model import DoorModel
 from .utils import pose_stamped, yaw_from_quat
@@ -401,28 +401,28 @@ class PlannerCore(object):
     def _run_search(self, start_s, is_goal, succ, h, time_budget_s):
         time_limit = max(0.2, time_budget_s)
 
-        if self.cfg.use_anytime:
+        if self.cfg.use_eps_schedule:
             rospy.loginfo(
-                "[Planner] Search mode: anytime epsilon schedule "
+                "[Planner] Search mode: repeated weighted A* epsilon schedule "
                 "(eps_start=%.2f, eps_end=%.2f, eps_step=%.2f, time_budget=%.2fs)",
-                self.cfg.ara_eps_start,
-                self.cfg.ara_eps_end,
-                self.cfg.ara_eps_step,
+                self.cfg.eps_start,
+                self.cfg.eps_end,
+                self.cfg.eps_step,
                 time_limit,
             )
-            return ara_star(
+            return eps_schedule_search(
                 start=start_s,
                 is_goal=is_goal,
                 succ=succ,
                 heuristic=h,
-                eps_start=self.cfg.ara_eps_start,
-                eps_end=self.cfg.ara_eps_end,
-                eps_step=self.cfg.ara_eps_step,
+                eps_start=self.cfg.eps_start,
+                eps_end=self.cfg.eps_end,
+                eps_step=self.cfg.eps_step,
                 total_time_s=time_limit,
             )
 
         rospy.loginfo(
-            "[Planner] Search mode: weighted A* (w=%.2f, time_budget=%.2fs)",
+            "[Planner] Search mode: single weighted A* (w=%.2f, time_budget=%.2fs)",
             self.cfg.w_astar,
             time_limit,
         )

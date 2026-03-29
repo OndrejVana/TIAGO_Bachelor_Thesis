@@ -9,7 +9,6 @@
 
     <param name="generate_goal_topic" value="/tiago_move_base_control/generate_goal"/>
 
-    <!-- IMPORTANT: your move_base namespace -->
     <param name="move_base_status_topic" value="/tiago_move_base/move_base/status"/>
 
     <param name="nav_timeout_s" value="60.0"/>
@@ -18,6 +17,21 @@
     <!-- Door mask toggle + costmap clear -->
     <param name="door_mask_enable_topic" value="/door_mask/enabled"/>
     <param name="clear_costmaps_service" value="/tiago_move_base/move_base/clear_costmaps"/>
+
+    <!-- Door planning action -->
+    <param name="interaction_topic"   value="/door/interaction"/>
+    <param name="plan_door_action_ns" value="plan_door_opening"/>
+    <param name="goal_open_angle_rad" value="1.047"/>  <!-- 60 deg -->
+    <param name="planning_time_s"     value="30.0"/>
+
+    <!-- Door execution action -->
+    <param name="execute_door_action_ns"      value="execute_door_opening"/>
+    <param name="execution_velocity_scaling"  value="0.5"/>
+    <param name="execution_timeout_s"         value="120.0"/>
+
+    <!-- Go-through navigation -->
+    <param name="generate_through_goal_topic" value="/tiago_move_base_control/generate_through_goal"/>
+    <param name="go_through_timeout_s"        value="60.0"/>
 
     <param name="tick_hz" value="10.0"/>
   </node>

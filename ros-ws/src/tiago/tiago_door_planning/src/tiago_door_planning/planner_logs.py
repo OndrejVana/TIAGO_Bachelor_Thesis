@@ -109,12 +109,12 @@ def log_search_summary(r, tr, lambda_state_cache, plan_elapsed, cfg, lam_stats):
         r.message
     )
 
-    if cfg.use_anytime:
+    if cfg.use_eps_schedule:
         rospy.loginfo(
-            "[Planner] Search settings used: anytime schedule [%.2f -> %.2f step %.2f]",
-            cfg.ara_eps_start,
-            cfg.ara_eps_end,
-            cfg.ara_eps_step,
+            "[Planner] Search settings used: epsilon schedule [%.2f -> %.2f step %.2f]",
+            cfg.eps_start,
+            cfg.eps_end,
+            cfg.eps_step,
         )
     else:
         rospy.loginfo(

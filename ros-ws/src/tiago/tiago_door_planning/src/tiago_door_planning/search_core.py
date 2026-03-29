@@ -152,11 +152,11 @@ def _update_best_result(best, result):
     return best
 
 
-def _ara_schedule_finished(eps, eps_end):
+def _schedule_finished(eps, eps_end):
     return eps < eps_end
 
 
-def _ara_no_solution_result(elapsed, total_time_s, finished_schedule):
+def _no_solution_result(elapsed, total_time_s, finished_schedule):
     if elapsed >= total_time_s and not finished_schedule:
         return SearchResult(
             False, [], float("inf"), 0,
@@ -169,7 +169,7 @@ def _ara_no_solution_result(elapsed, total_time_s, finished_schedule):
     )
 
 
-def _ara_success_result(best, elapsed, total_time_s, finished_schedule):
+def _success_result(best, elapsed, total_time_s, finished_schedule):
     if elapsed >= total_time_s and not finished_schedule:
         return SearchResult(
             True,
@@ -188,11 +188,10 @@ def _ara_success_result(best, elapsed, total_time_s, finished_schedule):
     )
 
 
-def ara_star(start, is_goal, succ, heuristic, eps_start, eps_end, eps_step, total_time_s):
+def eps_schedule_search(start, is_goal, succ, heuristic, eps_start, eps_end, eps_step, total_time_s):
     """
-    ARA* wrapper:
-      - run Weighted A* with decreasing epsilon (w)
-      - keep best found solution
+    Repeated Weighted A* with a decreasing epsilon schedule.
+    Each iteration restarts from scratch with a lower epsilon and keeps the best solution found.
     """
     best = None
     t0 = _current_time()
@@ -213,9 +212,9 @@ def ara_star(start, is_goal, succ, heuristic, eps_start, eps_end, eps_step, tota
         eps -= eps_step
 
     elapsed = _current_time() - t0
-    finished_schedule = _ara_schedule_finished(eps, eps_end)
+    finished_schedule = _schedule_finished(eps, eps_end)
 
     if best is None:
-        return _ara_no_solution_result(elapsed, total_time_s, finished_schedule)
+        return _no_solution_result(elapsed, total_time_s, finished_schedule)
 
-    return _ara_success_result(best, elapsed, total_time_s, finished_schedule)
+    return _success_result(best, elapsed, total_time_s, finished_schedule)

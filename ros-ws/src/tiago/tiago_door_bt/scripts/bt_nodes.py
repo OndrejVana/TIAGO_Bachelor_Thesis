@@ -3,6 +3,8 @@
 
 from __future__ import print_function
 
+import math
+
 import rospy
 import py_trees
 import actionlib
@@ -387,4 +389,220 @@ class CallDoorPregraspOnce(py_trees.behaviour.Behaviour):
         except Exception as e:
             rospy.logwarn("  [%s] Door pregrasp call failed: %s", self.name, str(e))
             return py_trees.common.Status.FAILURE
-        
+
+
+class WaitForInteraction(py_trees.behaviour.Behaviour):
+    """
+    Waits for a fresh /door/interaction message (std_msgs/String, value "push" or "pull").
+    Stores push_motion (bool) on the blackboard.
+
+    SUCCESS: received "push" or "pull" within max_age_s
+    RUNNING: otherwise
+    FAILURE: never
+    """
+
+    def __init__(self, name, topic, max_age_s=1.0, blackboard_key="push_motion"):
+        super(WaitForInteraction, self).__init__(name=name)
+        self.topic = topic
+        self.max_age_s = float(max_age_s)
+        self.blackboard_key = blackboard_key
+        self.last_msg = None
+        self.sub = None
+        self.bb = py_trees.blackboard.Blackboard()
+
+    def setup(self, timeout):
+        from std_msgs.msg import String as StringMsg
+        self.sub = rospy.Subscriber(self.topic, StringMsg, self._cb, queue_size=1)
+        return True
+
+    def _cb(self, msg):
+        self.last_msg = msg
+
+    def update(self):
+        if self.last_msg is None:
+            return py_trees.common.Status.RUNNING
+
+        value = self.last_msg.data.strip().lower()
+        if value not in ("push", "pull"):
+            return py_trees.common.Status.RUNNING
+
+        stamp = self.last_msg.header.stamp if hasattr(self.last_msg, 'header') else rospy.Time()
+        if stamp != rospy.Time():
+            age = (rospy.Time.now() - stamp).to_sec()
+            if age > self.max_age_s:
+                return py_trees.common.Status.RUNNING
+
+        push_motion = (value == "push")
+        self.bb.set(self.blackboard_key, push_motion)
+        rospy.loginfo("  [%s] interaction=%s -> push_motion=%s", self.name, value, push_motion)
+        return py_trees.common.Status.SUCCESS
+
+
+class CallPlanDoorOpeningAction(py_trees.behaviour.Behaviour):
+    """
+    Sends a PlanDoorOpening action goal to the door planning server and waits for the result.
+
+    RUNNING: while the action is in progress or server not yet available
+    SUCCESS: planning succeeded — result stored on blackboard under blackboard_key
+    FAILURE: planning failed, server rejected goal, or timeout exceeded
+    """
+
+    def __init__(self, name, action_ns, goal_open_angle_rad,
+                 generate_arm_traj=True, publish_paths=True,
+                 allowed_planning_time=30.0, blackboard_key="plan_result",
+                 push_motion_blackboard_key="push_motion",
+                 timeout_s=60.0):
+        super(CallPlanDoorOpeningAction, self).__init__(name=name)
+        self.action_ns = action_ns
+        self.push_motion_blackboard_key = push_motion_blackboard_key
+        self.goal_open_angle_rad = float(goal_open_angle_rad)
+        self.generate_arm_traj = bool(generate_arm_traj)
+        self.publish_paths = bool(publish_paths)
+        self.allowed_planning_time = float(allowed_planning_time)
+        self.blackboard_key = blackboard_key
+        self.timeout_s = float(timeout_s)
+        self.client = None
+        self.goal_sent = False
+        self.start_time = None
+        self.bb = py_trees.blackboard.Blackboard()
+
+    def setup(self, timeout):
+        from tiago_door_planning.msg import PlanDoorOpeningAction as PlanAction
+        self.client = actionlib.SimpleActionClient(self.action_ns, PlanAction)
+        return True
+
+    def initialise(self):
+        self.goal_sent = False
+        self.start_time = rospy.Time.now()
+
+    def update(self):
+        if not self.goal_sent:
+            if not self.client.wait_for_server(rospy.Duration(0.5)):
+                rospy.logwarn_throttle(5.0, "  [%s] Waiting for action server %s",
+                                       self.name, self.action_ns)
+                return py_trees.common.Status.RUNNING
+
+            push_motion = self.bb.get(self.push_motion_blackboard_key)
+            if push_motion is None:
+                rospy.logwarn("  [%s] No push_motion on blackboard key '%s'",
+                              self.name, self.push_motion_blackboard_key)
+                return py_trees.common.Status.FAILURE
+
+            from tiago_door_planning.msg import PlanDoorOpeningGoal
+            goal = PlanDoorOpeningGoal()
+            goal.push_motion = bool(push_motion)
+            goal.goal_open_angle_rad = self.goal_open_angle_rad
+            goal.generate_arm_traj = self.generate_arm_traj
+            goal.publish_paths = self.publish_paths
+            goal.allowed_planning_time = self.allowed_planning_time
+            rospy.loginfo(
+                "  [%s] Sending PlanDoorOpening goal (push=%s, angle=%.1f deg, budget=%.1fs)",
+                self.name, bool(push_motion),
+                math.degrees(self.goal_open_angle_rad), self.allowed_planning_time
+            )
+            self.client.send_goal(goal)
+            self.goal_sent = True
+            return py_trees.common.Status.RUNNING
+
+        elapsed = (rospy.Time.now() - self.start_time).to_sec()
+        if elapsed > self.timeout_s:
+            rospy.logwarn("  [%s] Planning timeout after %.1fs", self.name, elapsed)
+            self.client.cancel_goal()
+            return py_trees.common.Status.FAILURE
+
+        state = self.client.get_state()
+        if state == SUCCEEDED:
+            result = self.client.get_result()
+            if result and result.success:
+                self.bb.set(self.blackboard_key, result)
+                rospy.loginfo("  [%s] Planning succeeded: %s", self.name, result.message)
+                return py_trees.common.Status.SUCCESS
+            else:
+                msg = result.message if result else "no result"
+                rospy.logwarn("  [%s] Planning returned failure: %s", self.name, msg)
+                return py_trees.common.Status.FAILURE
+        elif state in (ABORTED, REJECTED, LOST, PREEMPTED):
+            rospy.logwarn("  [%s] Planning action ended with state %d", self.name, state)
+            return py_trees.common.Status.FAILURE
+
+        return py_trees.common.Status.RUNNING
+
+
+class CallExecuteDoorOpeningAction(py_trees.behaviour.Behaviour):
+    """
+    Reads the door plan from the blackboard and sends an ExecuteDoorOpening action goal.
+
+    RUNNING: while execution is in progress or server not yet available
+    SUCCESS: execution finished successfully
+    FAILURE: no plan on blackboard, execution failed, or timeout exceeded
+    """
+
+    def __init__(self, name, action_ns, blackboard_key="plan_result",
+                 velocity_scaling=0.5, timeout_s=120.0):
+        super(CallExecuteDoorOpeningAction, self).__init__(name=name)
+        self.action_ns = action_ns
+        self.blackboard_key = blackboard_key
+        self.velocity_scaling = float(velocity_scaling)
+        self.timeout_s = float(timeout_s)
+        self.client = None
+        self.goal_sent = False
+        self.start_time = None
+        self.bb = py_trees.blackboard.Blackboard()
+
+    def setup(self, timeout):
+        from tiago_door_planning.msg import ExecuteDoorOpeningAction as ExecAction
+        self.client = actionlib.SimpleActionClient(self.action_ns, ExecAction)
+        return True
+
+    def initialise(self):
+        self.goal_sent = False
+        self.start_time = rospy.Time.now()
+
+    def update(self):
+        if not self.goal_sent:
+            if not self.client.wait_for_server(rospy.Duration(0.5)):
+                rospy.logwarn_throttle(5.0, "  [%s] Waiting for action server %s",
+                                       self.name, self.action_ns)
+                return py_trees.common.Status.RUNNING
+
+            plan = self.bb.get(self.blackboard_key)
+            if plan is None:
+                rospy.logwarn("  [%s] No plan on blackboard key '%s'",
+                              self.name, self.blackboard_key)
+                return py_trees.common.Status.FAILURE
+
+            from tiago_door_planning.msg import ExecuteDoorOpeningGoal
+            goal = ExecuteDoorOpeningGoal()
+            goal.base_path = plan.base_path
+            goal.base_times = list(plan.base_times)
+            goal.arm_trajectory = plan.arm_trajectory
+            goal.velocity_scaling = self.velocity_scaling
+            rospy.loginfo(
+                "  [%s] Sending ExecuteDoorOpening goal (%d waypoints, v_scale=%.2f)",
+                self.name, len(plan.base_path.poses), self.velocity_scaling
+            )
+            self.client.send_goal(goal)
+            self.goal_sent = True
+            return py_trees.common.Status.RUNNING
+
+        elapsed = (rospy.Time.now() - self.start_time).to_sec()
+        if elapsed > self.timeout_s:
+            rospy.logwarn("  [%s] Execution timeout after %.1fs", self.name, elapsed)
+            self.client.cancel_goal()
+            return py_trees.common.Status.FAILURE
+
+        state = self.client.get_state()
+        if state == SUCCEEDED:
+            result = self.client.get_result()
+            if result and result.success:
+                rospy.loginfo("  [%s] Execution succeeded: %s", self.name, result.message)
+                return py_trees.common.Status.SUCCESS
+            else:
+                msg = result.message if result else "no result"
+                rospy.logwarn("  [%s] Execution returned failure: %s", self.name, msg)
+                return py_trees.common.Status.FAILURE
+        elif state in (ABORTED, REJECTED, LOST, PREEMPTED):
+            rospy.logwarn("  [%s] Execution action ended with state %d", self.name, state)
+            return py_trees.common.Status.FAILURE
+
+        return py_trees.common.Status.RUNNING

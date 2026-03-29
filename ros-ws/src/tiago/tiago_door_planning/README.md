@@ -30,8 +30,8 @@ tiago_door_planning/
 │   └── visualize_reachability_map.py  # Reachability map visualizer (single & dual arm)
 ├── src/
 │   └── tiago_door_planning/
-│       ├── planner_core.py            # Lattice planner (ARA* / Weighted A*)
-│       ├── search_core.py             # ARA* and weighted A* implementations
+│       ├── planner_core.py            # Lattice planner (epsilon schedule / Weighted A*)
+│       ├── search_core.py             # Repeated weighted A* with epsilon schedule, and single weighted A*
 │       ├── lattice.py                 # Discrete state space & motion primitives
 │       ├── feasibility.py             # Feasible door-angle sets (Λ computation)
 │       ├── reachability.py            # Geometric & offline-map reachability backends
@@ -143,7 +143,7 @@ float64 goal_open_angle_rad      # target open angle (e.g. 1.05 rad ≈ 60°)
 bool    push_motion               # true = push, false = pull
 bool    generate_arm_traj         # generate arm trajectory via MoveIt IK
 bool    publish_paths             # publish debug paths to /door_plan/ topics
-float64 allowed_planning_time     # ARA* time budget (seconds)
+float64 allowed_planning_time     # planner time budget (seconds)
 ---
 # Result
 bool    success
@@ -342,18 +342,18 @@ rosrun tiago_door_planning test_door_opening.py \
 | `planner/reachability_fixed_z` | `1.05` | Handle height at map generation (m) |
 | `planner/reachability_z_tol` | `0.15` | Z-tolerance for map lookup (m) |
 | `planner/use_grasp_yaw` | `true` | Include grasp yaw in map lookup |
-| `planner/grasp_yaw_offset_rad` | `-1.5708` | Must match `--grasp-yaw-offset-rad` used at map generation |
+| `planning/grasp_yaw_offset_rad` | `-1.5708` | Grasp yaw offset (rad) — shared with EE path building; must match `--grasp-yaw-offset-rad` used at map generation |
 | `planner/monotonic_angle_tol_rad` | `0.00873` | Monotonicity tolerance (rad, ≈0.5°) |
 
 ### Search
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `planner/use_anytime` | `true` | Use ARA\* (true) or single Weighted A\* (false) |
-| `planner/w_astar` | `2.0` | Weighted A\* heuristic weight |
-| `planner/ara_eps_start` | `3.0` | ARA\* initial epsilon |
-| `planner/ara_eps_end` | `1.0` | ARA\* final epsilon |
-| `planner/ara_eps_step` | `1.0` | Epsilon decrement per iteration |
+| `planner/use_eps_schedule` | `true` | Use repeated weighted A\* with decreasing epsilon (true) or single weighted A\* (false) |
+| `planner/w_astar` | `2.0` | Weighted A\* heuristic weight (used when `use_eps_schedule` is false) |
+| `planner/eps_start` | `3.0` | Initial epsilon for epsilon schedule |
+| `planner/eps_end` | `1.0` | Final epsilon for epsilon schedule |
+| `planner/eps_step` | `1.0` | Epsilon decrement per iteration |
 | `planner/goal_open_angle_rad` | `1.047` | Goal door angle (rad, ≈60°) |
 | `planner/goal_tolerance_rad` | `0.175` | Goal angle tolerance (rad, ≈10°) |
 

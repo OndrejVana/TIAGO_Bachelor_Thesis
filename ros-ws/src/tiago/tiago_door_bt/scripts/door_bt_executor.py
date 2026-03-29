@@ -16,6 +16,9 @@ from bt_nodes import (
     DelaySeconds,
     CallTriggerServiceOnce,
     CallDoorPregraspOnce,
+    CallPlanDoorOpeningAction,
+    CallExecuteDoorOpeningAction,
+    WaitForInteraction,
 )
 
 def make_tree(params):
@@ -26,10 +29,16 @@ def make_tree(params):
         timeout_s=2.0
     )
     
-    # Phase 1: Door model ready
+    # Phase 1: Door model ready (plane pose + handle pose + push/pull interaction)
     wait_plane = WaitForPose("WaitForPlanePose", params["plane_topic"], params["pose_max_age_s"])
+    wait_interaction = WaitForInteraction(
+        "WaitForInteraction",
+        topic=params["interaction_topic"],
+        max_age_s=params["pose_max_age_s"],
+        blackboard_key="push_motion",
+    )
 
-    children_ready = [wait_plane]
+    children_ready = [wait_plane, wait_interaction]
     if params["require_handle_pose"]:
         wait_handle = WaitForPose("WaitForHandlePose", params["handle_topic"], params["pose_max_age_s"])
         children_ready.append(wait_handle)
@@ -63,10 +72,11 @@ def make_tree(params):
         )
         nav_attempts.append(nav_sequence)
 
-    # Selector tries each attempt until one succeeds
+    # Selector tries each attempt in order until one succeeds.
+    # memory=True ensures a failed attempt is never re-triggered.
     nav_retry = py_trees.composites.Selector(
         name="RetryNavigation",
-        memory=False,
+        memory=True,
         children=nav_attempts,
     )
 
@@ -118,11 +128,58 @@ def make_tree(params):
         children=[gripper_open, move_to_pregrasp, gripper_close],
     )
 
-    # Phase 4: Planning and executing door-opening trajectory
-    plan_trajectory = py_trees.behaviours.Success(name="PlanAndExecuteDoorTrajectoryPlaceholder")
-    
-    # Phase 5: Go through door (placeholder - would need navigation goal beyond door)
-    go_through = py_trees.behaviours.Success(name="GoThroughPlaceholder")
+    # Phase 4: Plan door trajectory
+    plan_door = CallPlanDoorOpeningAction(
+        name="PlanDoorOpening",
+        action_ns=params["plan_door_action_ns"],
+        goal_open_angle_rad=params["goal_open_angle_rad"],
+        generate_arm_traj=True,
+        publish_paths=True,
+        allowed_planning_time=params["planning_time_s"],
+        blackboard_key="plan_result",
+        push_motion_blackboard_key="push_motion",
+        timeout_s=params["planning_time_s"] + 10.0,
+    )
+
+    # Phase 4b: Execute door trajectory (reads plan from blackboard)
+    execute_door = CallExecuteDoorOpeningAction(
+        name="ExecuteDoorOpening",
+        action_ns=params["execute_door_action_ns"],
+        blackboard_key="plan_result",
+        velocity_scaling=params["execution_velocity_scaling"],
+        timeout_s=params["execution_timeout_s"],
+    )
+
+    # Release the handle after execution before navigating through
+    gripper_release = CallTriggerServiceOnce(
+        "GripperRelease",
+        "/tiago_arm_manipulation/gripper_open",
+        timeout_s=5.0,
+    )
+
+    plan_and_execute = py_trees.composites.Sequence(
+        name="PlanAndExecuteDoor",
+        memory=True,
+        children=[plan_door, execute_door, gripper_release],
+    )
+
+    # Phase 5: Navigate through the open door
+    trigger_through = PublishEmptyOnce(
+        name="TriggerThroughGoal",
+        topic=params["generate_through_goal_topic"],
+        blackboard_key_stamp="through_trigger_stamp",
+    )
+    wait_through = WaitForMoveBaseResult(
+        name="WaitThroughDoor",
+        status_topic=params["move_base_status_topic"],
+        timeout_s=params["go_through_timeout_s"],
+        blackboard_key_stamp="through_trigger_stamp",
+    )
+    go_through = py_trees.composites.Sequence(
+        name="GoThroughDoor",
+        memory=True,
+        children=[trigger_through, wait_through],
+    )
 
     # Delay to observe door mask effect (for debugging/visualization)
     observe_mask = DelaySeconds("ObserveDoorMask", duration_s=5.0)
@@ -160,7 +217,7 @@ def make_tree(params):
             prep_door,
             freeze_srv,
             arm_manipulation,
-            plan_trajectory,
+            plan_and_execute,
             go_through,
             observe_mask,
             restore,
@@ -189,7 +246,23 @@ def main():
         # Door mask + costmap clearing
         "door_mask_enable_topic": rospy.get_param("~door_mask_enable_topic", "/door_mask/enabled"),
         "clear_costmaps_service": rospy.get_param("~clear_costmaps_service", "/tiago_move_base/move_base/clear_costmaps"),
-        
+
+        # Door planning action (push_motion is read from /door/interaction at runtime)
+        "interaction_topic":        rospy.get_param("~interaction_topic", "/door/interaction"),
+        "plan_door_action_ns":      rospy.get_param("~plan_door_action_ns", "plan_door_opening"),
+        "goal_open_angle_rad":      float(rospy.get_param("~goal_open_angle_rad", 1.047)),  # 60 deg
+        "planning_time_s":          float(rospy.get_param("~planning_time_s", 30.0)),
+
+        # Door execution action
+        "execute_door_action_ns":       rospy.get_param("~execute_door_action_ns", "execute_door_opening"),
+        "execution_velocity_scaling":   float(rospy.get_param("~execution_velocity_scaling", 0.5)),
+        "execution_timeout_s":          float(rospy.get_param("~execution_timeout_s", 120.0)),
+
+        # Go-through navigation
+        "generate_through_goal_topic":  rospy.get_param("~generate_through_goal_topic",
+                                                         "/tiago_move_base_control/generate_through_goal"),
+        "go_through_timeout_s":         float(rospy.get_param("~go_through_timeout_s", 60.0)),
+
         "tick_hz": float(rospy.get_param("~tick_hz", 10.0)),
     }
 

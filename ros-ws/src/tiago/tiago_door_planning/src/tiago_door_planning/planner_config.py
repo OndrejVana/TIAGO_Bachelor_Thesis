@@ -65,11 +65,11 @@ class PlannerConfig(object):
                  reachability_y_exclusion_half_width_m=0.0,
                  use_grasp_yaw=True,
                  grasp_yaw_offset_rad=0.0,
-                 use_anytime=True,
+                 use_eps_schedule=True,
                  w_astar=2.0,
-                 ara_eps_start=4.0,
-                 ara_eps_end=1.0,
-                 ara_eps_step=1.0,
+                 eps_start=4.0,
+                 eps_end=1.0,
+                 eps_step=1.0,
                  goal_open_angle_rad=None,
                  goal_tolerance_rad=None,
                  occ_threshold=50,
@@ -112,11 +112,11 @@ class PlannerConfig(object):
         self.use_grasp_yaw = bool(use_grasp_yaw)
         self.grasp_yaw_offset_rad = float(grasp_yaw_offset_rad)
 
-        self.use_anytime = use_anytime
+        self.use_eps_schedule = use_eps_schedule
         self.w_astar = w_astar
-        self.ara_eps_start = ara_eps_start
-        self.ara_eps_end = ara_eps_end
-        self.ara_eps_step = ara_eps_step
+        self.eps_start = eps_start
+        self.eps_end = eps_end
+        self.eps_step = eps_step
         self.goal_open_angle_rad = (
             goal_open_angle_rad if goal_open_angle_rad is not None else np.radians(85.0)
         )
@@ -174,13 +174,13 @@ class PlannerConfig(object):
                cfg.reachability_y_exclusion_half_width_m)
         )
         cfg.use_grasp_yaw = bool(gp("planner/use_grasp_yaw", cfg.use_grasp_yaw))
-        cfg.grasp_yaw_offset_rad = float(gp("planner/grasp_yaw_offset_rad", cfg.grasp_yaw_offset_rad))
+        cfg.grasp_yaw_offset_rad = float(gp("planning/grasp_yaw_offset_rad", cfg.grasp_yaw_offset_rad))
 
-        cfg.use_anytime = bool(gp("planner/use_anytime", cfg.use_anytime))
+        cfg.use_eps_schedule = bool(gp("planner/use_eps_schedule", cfg.use_eps_schedule))
         cfg.w_astar = float(gp("planner/w_astar", cfg.w_astar))
-        cfg.ara_eps_start = float(gp("planner/ara_eps_start", cfg.ara_eps_start))
-        cfg.ara_eps_end = float(gp("planner/ara_eps_end", cfg.ara_eps_end))
-        cfg.ara_eps_step = float(gp("planner/ara_eps_step", cfg.ara_eps_step))
+        cfg.eps_start = float(gp("planner/eps_start", cfg.eps_start))
+        cfg.eps_end = float(gp("planner/eps_end", cfg.eps_end))
+        cfg.eps_step = float(gp("planner/eps_step", cfg.eps_step))
 
         cfg.goal_open_angle_rad = float(gp("planner/goal_open_angle_rad", cfg.goal_open_angle_rad))
         cfg.goal_tolerance_rad = float(gp("planner/goal_tolerance_rad", cfg.goal_tolerance_rad))
