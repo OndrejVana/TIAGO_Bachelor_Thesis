@@ -49,3 +49,6 @@ qtcreator-*
 .#*
 
 CATKIN_IGNORE
+
+# rosbag recordings
+ros-ws/src/tiago/bags/

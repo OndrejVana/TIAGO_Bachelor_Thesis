@@ -31,5 +31,6 @@
 
     <param name="action_name" value="execute_door_opening"/>
     <param name="arm_approach_time" value="5.0"/>
+    <param name="max_base_lag_m"    value="0.15"/>
   </node>
 </launch>

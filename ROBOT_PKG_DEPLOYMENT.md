@@ -168,7 +168,7 @@ ssh root@tiago-114c "docker run --rm --net=host \
   -v /home/pal/tiago_ws/build:/tiago_dev_ws/build \
   -v /home/pal/tiago_ws/devel:/tiago_dev_ws/devel \
   tiago_dev_melodic:latest \
-  bash -c 'source /opt/ros/melodic/setup.bash && cd /tiago_dev_ws && catkin build tiago_move_base_control'"
+  bash -c 'source /opt/ros/melodic/setup.bash && cd /tiago_dev_ws && catkin build tiago_slam'"
 ```
 
 ### 2. Run nodes on robot (three SSH terminals)
@@ -188,7 +188,10 @@ ssh root@tiago-114c "/home/pal/run_navigation.sh"
 
 ```bash
 export ROS_MASTER_URI=http://tiago-114c:11311
-export ROS_IP=192.168.251.123
+# over wifi
+export ROS_IP=192.168.251.123 
+# over ethernet
+export ROS_IP=10.68.0.128
 
 roslaunch tiago_door_bringup main.launch \
   simulation:=false \

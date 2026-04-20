@@ -40,6 +40,7 @@
         robot_base_frame: base_footprint
         update_frequency: 2.0
         publish_frequency: 1.0
+        transform_tolerance: 5.0
 
         # Use the saved /map (door likely closed in map)
         static_map: true
@@ -79,6 +80,7 @@
         robot_base_frame: base_footprint
         update_frequency: 5.0
         publish_frequency: 2.0
+        transform_tolerance: 5.0
 
         static_map: false
         rolling_window: true

@@ -14,6 +14,7 @@ import tf.transformations as tft
 from geometry_msgs.msg import PoseStamped
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from moveit_msgs.srv import GetPositionIK, GetPositionIKRequest
+from moveit_msgs.srv import GetStateValidity, GetStateValidityRequest
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_msgs.msg import RobotState as MoveItRobotState
 
@@ -62,6 +63,10 @@ class MoveItWaypointIK(object):
         rospy.wait_for_service("/compute_ik", timeout=10.0)
         self._ik_srv = rospy.ServiceProxy("/compute_ik", GetPositionIK)
         rospy.loginfo("[ArmPlanner] /compute_ik service ready.")
+
+        rospy.wait_for_service("/check_state_validity", timeout=10.0)
+        self._check_validity_srv = rospy.ServiceProxy("/check_state_validity", GetStateValidity)
+        rospy.loginfo("[ArmPlanner] /check_state_validity service ready.")
 
         self._scene = moveit_commander.PlanningSceneInterface()
         rospy.sleep(0.5)  # allow scene interface to initialize
@@ -118,6 +123,21 @@ class MoveItWaypointIK(object):
             rospy.logdebug("[ArmPlanner] Empty trajectory points from MoveIt")
             return None
         return list(traj.joint_trajectory.points[-1].positions)
+
+    def _check_joint_config_valid(self, joint_positions):
+        """Return True if joint_positions passes MoveIt collision/validity check."""
+        req = GetStateValidityRequest()
+        req.group_name = self.cfg.group
+        rs = MoveItRobotState()
+        rs.joint_state.name = self._active_joint_names()
+        rs.joint_state.position = list(joint_positions)
+        req.robot_state = rs
+        try:
+            resp = self._check_validity_srv(req)
+            return resp.valid
+        except rospy.ServiceException as e:
+            rospy.logwarn("[ArmPlanner] check_state_validity failed: %s — treating as valid", e)
+            return True
 
     def _call_ik_service(self, pose_stamped, seed=None):
         """
@@ -482,10 +502,17 @@ class MoveItWaypointIK(object):
                 continue
             dt = all_timestamps[next_i] - all_timestamps[prev_i]
             alpha = (all_timestamps[i] - all_timestamps[prev_i]) / dt if dt > 1e-9 else 0.5
-            all_joints[i] = [
+            interp = [
                 (1.0 - alpha) * all_joints[prev_i][k] + alpha * all_joints[next_i][k]
                 for k in range(len(all_joints[prev_i]))
             ]
+            if not self._check_joint_config_valid(interp):
+                rospy.logwarn(
+                    "[ArmPlanner] Interpolated config at waypoint %d failed collision check", i
+                )
+                n_unfillable += 1
+                continue
+            all_joints[i] = interp
             n_filled += 1
 
         if n_filled > 0:

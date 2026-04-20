@@ -44,13 +44,13 @@
 
     <param name="approx_sync"             value="true"/>
     <param name="queue_size"              value="100"/>
-    <param name="approx_sync_max_interval" value="0.1"/>
+    <param name="approx_sync_max_interval" value="0.5"/>
 
     <param name="Reg/Force3DoF"   value="true"/>
     <param name="Vis/MinInliers"  value="12"/>
     <param name="Vis/InlierDistance" value="0.15"/>
 
-    <param name="publish_tf" value="true"/>
+    <param name="publish_tf" value="false"/>
     <param name="tf_delay"   value="0.01"/>
   </node>
 
@@ -70,6 +70,7 @@
     <remap from="rgb/camera_info" to="$(arg rgb_camera_info_topic)"/>
     <remap from="odom"            to="/rgbd_odometry/odom"/>
     <remap from="scan"            to="$(arg scan_topic)"/>
+    <remap from="grid_map"        to="/map"/>
 
     <param name="subscribe_imu"            value="true"/>
     <remap from="imu"                      to="/base_imu"/>
@@ -97,11 +98,6 @@
     <param name="tf_publisher_rate" value="30.0"/>
   </node>
 
-  <node name="rtabmap_map_relay"
-        pkg="topic_tools"
-        type="relay"
-        args="/grid_map /map"
-        output="screen"/>
 
   <node name="slam_pose_publisher" pkg="tiago_slam" type="tf_to_pose.py" output="screen">
     <param name="from_frame"   value="$(arg map_frame)"/>

@@ -67,6 +67,8 @@ class DoorExecutionServer(object):
         self._kp_linear = float(rospy.get_param("~kp_linear", 1.0))
         self._kp_angular = float(rospy.get_param("~kp_angular", 2.0))
 
+        self._max_base_lag_m = float(rospy.get_param("~max_base_lag_m", 0.15))
+
         # External interfaces — dual-arm (Tiago++) or single-arm fallback
         _arm_legacy = rospy.get_param("~arm_controller", "")
         self._arm_controller_right = rospy.get_param(
@@ -745,6 +747,15 @@ class DoorExecutionServer(object):
             else:
                 target_idx = self._find_target_index(base_times, t_unscaled)
                 target_pose = base_path.poses[target_idx]
+
+                _, _, lag_m = self._position_error(current_pose, target_pose)
+                if lag_m > self._max_base_lag_m:
+                    rospy.logerr(
+                        "[Execution] Base lag %.3fm exceeds limit %.3fm — aborting",
+                        lag_m, self._max_base_lag_m
+                    )
+                    self._cancel_all_motion()
+                    return False, "Base lag %.2fm exceeded limit %.2fm" % (lag_m, self._max_base_lag_m)
 
             self._broadcast_ee_target_tf(t_unscaled, arm_traj=arm_traj)
 

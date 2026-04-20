@@ -53,9 +53,8 @@
   <!-- 2. SLAM System -->
   <group if="$(arg use_slam)">
     <group unless="$(arg simulation)">
-      <node name="kill_pal_nav_nodes" pkg="rosnode" type="rosnode"
-            args="kill /amcl /map_server /map_aligner_node /map_configuration_server /compressed_map_publisher"
-            output="screen" launch-prefix="bash -c 'sleep 5 &amp;&amp; $0 &quot;$@&quot;'"/>
+      <node name="kill_pal_nav_nodes" pkg="tiago_slam" type="kill_pal_nav_nodes.py"
+            output="screen"/>
     </group>
     <include file="$(find tiago_slam)/launch/tiago_slam.launch"/>
   </group>

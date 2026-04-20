@@ -1,0 +1,42 @@
+apriltag:
+  tag_family: "tag36h11"
+  tag_size_m: 0.18
+  tag_ids: [0]
+
+  side_by_id:
+    "0": "push_right"
+
+  hinge_side_by_id:
+    "0": "right"
+
+  interaction_by_id:
+    "0": "push"
+
+  preferred_side: ""
+  switch_hysteresis_s: 0.5
+
+models:
+  # Tag 0 acting as: push, hinge on the right
+  "0":
+    door_normal_axis_tag: "z"
+    hinge_axis_tag: "y"
+    hinge_offset_xyz:  [-0.75, 1.2, 0.0]
+    hinge_offset_rpy:  [0.0, 0.0, 0.0]
+    handle_offset_xyz: [0.0, 0.2, 0.10]
+    handle_offset_rpy: [0.0, 0.0, 0.0]
+    door_width_m: 0.9
+    handle_radius_m: 0.70
+    publish_hinge_orientation: true
+
+topics:
+  tag_detections: "/tag_detections"
+  door_tag_pose_map: "/door/tag_pose_map"
+
+frames:
+  map: "map"
+  camera_frame_fallback: "camera_color_optical_frame"
+  base_link: "base_link"
+
+tf:
+  publish_map: true
+  tf_timeout: 1.0

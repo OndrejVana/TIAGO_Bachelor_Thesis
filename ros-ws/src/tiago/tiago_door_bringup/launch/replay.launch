@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="bag"                    doc="Absolute path to the .bag file to replay"/>
+  <arg name="use_door_localization"  default="true"/>
+  <arg name="use_door_planning"      default="true"/>
+  <arg name="loop"                   default="false"/>
+  <arg name="rate"                   default="1.0"/>
+  <arg name="rviz"                   default="true"/>
+
+  <arg name="door_config" default="$(find tiago_door_localization)/config/apriltag_two_sided_door.yaml"/>
+
+  <arg name="reachability_map_right_arm" default="$(find tiago_door_planning)/maps/sim_map_right_arm.npz"/>
+  <arg name="reachability_map_left_arm"  default="$(find tiago_door_planning)/maps/sim_map_left_arm.npz"/>
+
+  <param name="/use_sim_time" value="true"/>
+
+  <node pkg="rosbag" type="play" name="rosbag_play" output="screen"
+        args="--clock --rate $(arg rate) $(eval '--loop' if arg('loop') else '') $(arg bag)"/>
+
+  <group if="$(arg use_door_localization)">
+    <include file="$(find tiago_door_localization)/launch/door_preception_tags.launch">
+      <arg name="config" value="$(arg door_config)"/>
+    </include>
+  </group>
+
+  <group if="$(arg use_door_planning)">
+
+    <include file="$(find tiago_dual_moveit_config)/launch/move_group.launch">
+      <arg name="allow_trajectory_execution"      value="false"/>
+      <arg name="publish_monitored_planning_scene" value="true"/>
+    </include>
+
+    <include file="$(find tiago_door_planning)/launch/door_planning.launch">
+      <arg name="reachability_map_right_arm" value="$(arg reachability_map_right_arm)"/>
+      <arg name="reachability_map_left_arm"  value="$(arg reachability_map_left_arm)"/>
+    </include>
+
+  </group>
+
+  <group if="$(arg rviz)">
+    <node pkg="rviz" type="rviz" name="rviz" output="screen"
+          args="-d $(find tiago_door_bringup)/rviz/tiago_door_nav.rviz"/>
+  </group>
+
+</launch>

@@ -6,7 +6,7 @@ import rospy
 import actionlib
 import numpy as np
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PoseArray
 from nav_msgs.msg import Path, OccupancyGrid
 from trajectory_msgs.msg import JointTrajectory
 from std_msgs.msg import String
@@ -322,8 +322,14 @@ class DoorPlanningServer(object):
 
     def _init_publishers(self):
         self._pub_base = rospy.Publisher(self._base_path_out, Path, queue_size=1, latch=True)
+        self._pub_base_poses = rospy.Publisher(
+            self._base_path_out + "_poses", PoseArray, queue_size=1, latch=True
+        )
         self._pub_handle = rospy.Publisher(self._handle_path_out, Path, queue_size=1, latch=True)
         self._pub_ee_target = rospy.Publisher(self._ee_target_path_out, Path, queue_size=1, latch=True)
+        self._pub_ee_poses = rospy.Publisher(
+            self._ee_target_path_out + "_poses", PoseArray, queue_size=1, latch=True
+        )
         self._pub_display_traj = rospy.Publisher(
             "/door_plan/display_trajectory", DisplayTrajectory, queue_size=1, latch=True
         )
@@ -576,8 +582,19 @@ class DoorPlanningServer(object):
             return
 
         self._pub_base.publish(base_path)
+
+        pa_base = PoseArray()
+        pa_base.header = base_path.header
+        pa_base.poses = [ps.pose for ps in base_path.poses]
+        self._pub_base_poses.publish(pa_base)
+
         self._pub_handle.publish(handle_path)
         self._pub_ee_target.publish(ee_target_path)
+
+        pa = PoseArray()
+        pa.header = ee_target_path.header
+        pa.poses = [ps.pose for ps in ee_target_path.poses]
+        self._pub_ee_poses.publish(pa)
 
         if arm_traj is not None and arm_traj.points:
             dt = DisplayTrajectory()
