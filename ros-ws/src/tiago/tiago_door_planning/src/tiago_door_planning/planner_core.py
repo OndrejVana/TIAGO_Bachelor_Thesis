@@ -85,6 +85,7 @@ class PlannerCore(object):
                 reachability_y_exclusion_half_width_m=cfg.reachability_y_exclusion_half_width_m,
                 use_grasp_yaw=cfg.use_grasp_yaw,
                 grasp_yaw_offset_rad=cfg.grasp_yaw_offset_rad,
+                reachability_wrist_roll_rad=getattr(cfg, 'reachability_wrist_roll_rad', None),
             )
         )
 
@@ -146,9 +147,8 @@ class PlannerCore(object):
 
     def _make_lambda_for_pose_xyyaw(self, hx, hy, hinge_yaw, handle_radius, opening_sign,
                                     push_motion=True):
-        # Pull doors: the robot must approach from the opposite side (grasp direction flipped).
-        # Add pi to grasp_yaw only — handle positions are still computed from the true hinge yaw.
-        grasp_yaw_extra_offset = 0.0 if bool(push_motion) else np.pi
+        # Robot approaches from the handle side for both push and pull; grasp orientation is the same.
+        grasp_yaw_extra_offset = 0.0
 
         lambda_state_cache = {}
 
@@ -187,6 +187,11 @@ class PlannerCore(object):
     def _determine_start_state(self, start_p, lambda_for_pose_xyyaw):
         start_lam = lambda_for_pose_xyyaw(start_p.x, start_p.y, start_p.yaw)
 
+        rospy.logwarn(
+            "[Planner] angles0=%d angles1=%d feasible=%d sampled=%d",
+            len(start_lam.angles0), len(start_lam.angles1),
+            sum(start_lam.feasible_mask), len(start_lam.feasible_mask),
+        )
         if start_lam.angles0:
             start_d = 0
         else:
@@ -290,15 +295,18 @@ class PlannerCore(object):
 
     def _extract_angles_for_interval(self, lambdas_per_pose, interval_d, rejected_stats):
         angles_per_pose = []
+        quality_per_pose = []
 
         for lam in lambdas_per_pose:
             a = interval_angles(lam, interval_d)
             if not a:
                 rejected_stats['sample_interval_empty'] += 1
-                return False, []
+                return False, [], []
             angles_per_pose.append(a)
+            qba = getattr(lam, 'quality_by_angle', {})
+            quality_per_pose.append([qba.get(ang, 1.0) for ang in a])
 
-        return True, angles_per_pose
+        return True, angles_per_pose, quality_per_pose
 
     def _check_primitive_continuity(self, angles_per_pose, rejected_stats, log_detail):
         cont_tol = 0.5 * np.radians(self.cfg.door_angle_step_deg)
@@ -317,7 +325,7 @@ class PlannerCore(object):
         return True, surviving_angles, None
 
     def _compute_step_cost(self, base_samples_ps, angles_per_pose, handle_pose_from_angle,
-                           hinge_pose_map, primitive_kind="fwd"):
+                           hinge_pose_map, primitive_kind="fwd", quality_per_angle_per_pose=None):
         return transition_cost(
             occ=self._occ,
             base_pose_samples=base_samples_ps,
@@ -326,6 +334,7 @@ class PlannerCore(object):
             hinge_pose_map=hinge_pose_map,
             cfg=self.cfg.cost,
             primitive_kind=primitive_kind,
+            quality_per_angle_per_pose=quality_per_angle_per_pose,
         )
 
     def _append_motion_successor(self, samples, interval_d, out, step_cost, tr):
@@ -368,9 +377,8 @@ class PlannerCore(object):
                 base_samples_ps = self._primitive_samples_to_pose_stamped(samples)
                 lambdas_per_pose = self._collect_lambdas_per_pose(samples, lambda_for_pose_xyyaw)
 
-                primitive_interval_ok, angles_per_pose = self._extract_angles_for_interval(
-                    lambdas_per_pose, s.d, tr.rejected
-                )
+                primitive_interval_ok, angles_per_pose, quality_per_angle_per_pose = \
+                    self._extract_angles_for_interval(lambdas_per_pose, s.d, tr.rejected)
                 if not primitive_interval_ok:
                     continue
 
@@ -381,7 +389,8 @@ class PlannerCore(object):
                     continue
 
                 step_cost = self._compute_step_cost(
-                    base_samples_ps, angles_per_pose, handle_pose_from_angle, hinge_pose_map, kind
+                    base_samples_ps, angles_per_pose, handle_pose_from_angle, hinge_pose_map, kind,
+                    quality_per_angle_per_pose=quality_per_angle_per_pose,
                 )
 
                 if not np.isfinite(step_cost) or step_cost >= 1e9:

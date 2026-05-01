@@ -23,10 +23,6 @@ except Exception:
     HAVE_MOVEIT = False
 
 
-# ============================================================
-# IK service client
-# ============================================================
-
 class IKServiceClient(object):
     """Direct /compute_ik wrapper — faster than MoveIt group for batch queries."""
 
@@ -74,11 +70,6 @@ class IKServiceClient(object):
                 return None
             result.append(float(name_to_pos[n]))
         return result
-
-
-# ============================================================
-# Quality map generator
-# ============================================================
 
 class QualityMapGenerator(object):
     """Computes a quality-scored reachability map over a 3-D (x, y, yaw) grid."""
@@ -211,69 +202,72 @@ class QualityMapGenerator(object):
         return min_frac
 
     def generate(self, x_bins, y_bins, yaw_bins_rad,
-                 frame_id, fixed_z, grasp_yaw_offset_rad, wrist_roll_rad=0.0,
+                 frame_id, fixed_z, grasp_yaw_offset_rad, wrist_roll_rads=None,
                  theta_step_rad=0.0):
-        """Run quality computation over the full grid. Returns float32 [Nx, Ny, Nyaw]."""
+        """Run quality computation over the full grid.
+        Returns float32 array of shape [Nx, Ny, Nyaw, Nroll].
+        wrist_roll_rads: list of roll values to compute (default [0.0]).
+        """
+        if wrist_roll_rads is None or len(wrist_roll_rads) == 0:
+            wrist_roll_rads = [0.0]
         Nx, Ny, Nyaw = len(x_bins), len(y_bins), len(yaw_bins_rad)
-        quality = np.zeros((Nx, Ny, Nyaw), dtype=np.float32)
-        total = Nx * Ny * Nyaw
-        # 4 spatial + 2 yaw-axis + optional 2 theta-rotation neighbours
+        Nroll = len(wrist_roll_rads)
+        quality = np.zeros((Nx, Ny, Nyaw, Nroll), dtype=np.float32)
+        total = Nx * Ny * Nyaw * Nroll
         n_neighbors = 6 + (2 if theta_step_rad > 1e-6 else 0)
 
         rospy.loginfo(
-            "[QualityMap] Grid: %d x %d x %d = %d cells  "
+            "[QualityMap] Grid: %d x %d x %d x %d rolls = %d cells  "
             "(~%d IK calls,  n_seeds=%d,  connectivity_weight=%.2f,  "
-            "wrist_roll=%.4f rad,  grasp_yaw_offset=%.4f rad,  theta_step=%.4f rad,  "
+            "wrist_rolls=%s rad,  grasp_yaw_offset=%.4f rad,  theta_step=%.4f rad,  "
             "max_joint_jump=%.3f rad)",
-            Nx, Ny, Nyaw, total,
+            Nx, Ny, Nyaw, Nroll, total,
             total * (self.n_seeds + n_neighbors), self.n_seeds, self.w_connect,
-            wrist_roll_rad, grasp_yaw_offset_rad, theta_step_rad,
+            str([round(r, 4) for r in wrist_roll_rads]),
+            grasp_yaw_offset_rad, theta_step_rad,
             self.max_joint_jump_rad,
         )
 
         done = 0
         t0 = time.time()
 
-        for ix in range(Nx):
-            for iy in range(Ny):
+        for iroll, wrist_roll_rad in enumerate(wrist_roll_rads):
+            for ix in range(Nx):
+                for iy in range(Ny):
 
-                prev_yaw_solutions = []
+                    prev_yaw_solutions = []
 
-                for iyaw in range(Nyaw):
-                    pose = _build_pose(
-                        frame_id=frame_id,
-                        x_rel=float(x_bins[ix]),
-                        y_rel=float(y_bins[iy]),
-                        z_abs=fixed_z,
-                        yaw_rel=float(yaw_bins_rad[iyaw]),
-                        grasp_yaw_offset_rad=grasp_yaw_offset_rad,
-                        wrist_roll_rad=wrist_roll_rad,
-                    )
+                    for iyaw in range(Nyaw):
+                        pose = _build_pose(
+                            frame_id=frame_id,
+                            x_rel=float(x_bins[ix]),
+                            y_rel=float(y_bins[iy]),
+                            z_abs=fixed_z,
+                            yaw_rel=float(yaw_bins_rad[iyaw]),
+                            grasp_yaw_offset_rad=grasp_yaw_offset_rad,
+                            wrist_roll_rad=wrist_roll_rad,
+                        )
 
-                    robustness, all_sols = self._compute_robustness(
-                        pose, extra_seeds=prev_yaw_solutions
-                    )
-                    prev_yaw_solutions = all_sols  # carry forward into next yaw bin
+                        robustness, all_sols = self._compute_robustness(
+                            pose, extra_seeds=prev_yaw_solutions
+                        )
+                        prev_yaw_solutions = all_sols  # carry forward into next yaw bin
 
-                    nb_poses = self._neighbor_poses(
-                        ix, iy, iyaw, x_bins, y_bins, yaw_bins_rad,
-                        frame_id, fixed_z, grasp_yaw_offset_rad, wrist_roll_rad,
-                        theta_step_rad=theta_step_rad,
-                    )
-                    connectivity = self._compute_connectivity(nb_poses, all_sols)
+                        nb_poses = self._neighbor_poses(
+                            ix, iy, iyaw, x_bins, y_bins, yaw_bins_rad,
+                            frame_id, fixed_z, grasp_yaw_offset_rad, wrist_roll_rad,
+                            theta_step_rad=theta_step_rad,
+                        )
+                        connectivity = self._compute_connectivity(nb_poses, all_sols)
 
-                    quality[ix, iy, iyaw] = float(robustness * connectivity)
-                    done += 1
-                    _print_progress(done, total, t0)
+                        quality[ix, iy, iyaw, iroll] = float(robustness * connectivity)
+                        done += 1
+                        _print_progress(done, total, t0)
 
         sys.stdout.write('\n')
         sys.stdout.flush()
         return quality
 
-
-# ============================================================
-# Progress bar
-# ============================================================
 
 def _format_eta(seconds):
     if seconds < 60:
@@ -297,10 +291,6 @@ def _print_progress(done, total, t_start):
     )
     sys.stdout.flush()
 
-
-# ============================================================
-# Helpers
-# ============================================================
 
 def _build_pose(frame_id, x_rel, y_rel, z_abs, yaw_rel,
                 grasp_yaw_offset_rad=0.0, wrist_roll_rad=0.0):
@@ -357,7 +347,11 @@ def _parse_neutral_joints(neutral_str, n_joints):
     return vals
 
 
-def _save_map(path, x_bins, y_bins, yaw_bins_rad, quality, quality_threshold, fixed_z):
+def _save_map(path, x_bins, y_bins, yaw_bins_rad, quality, quality_threshold, fixed_z,
+              wrist_roll_rads=None, grasp_yaw_offset_rad=0.0, group="", ee_link=""):
+    """Save 4D quality map [Nx, Ny, Nyaw, Nroll] to compressed NPZ."""
+    if wrist_roll_rads is None:
+        wrist_roll_rads = [0.0]
     out_dir = os.path.dirname(os.path.abspath(path))
     if out_dir and not os.path.exists(out_dir):
         os.makedirs(out_dir)
@@ -373,12 +367,13 @@ def _save_map(path, x_bins, y_bins, yaw_bins_rad, quality, quality_threshold, fi
         fixed_z=np.asarray(float(fixed_z), dtype=float),
         quality=np.asarray(quality, dtype=np.float32),
         quality_threshold=np.asarray(float(quality_threshold), dtype=float),
+        wrist_roll_rad_bins=np.asarray(wrist_roll_rads, dtype=float),
+        gen_wrist_roll_rad=np.asarray(float(wrist_roll_rads[0]), dtype=float),  # legacy
+        gen_grasp_yaw_offset_rad=np.asarray(float(grasp_yaw_offset_rad), dtype=float),
+        gen_group=np.asarray(str(group)),
+        gen_ee_link=np.asarray(str(ee_link)),
     )
 
-
-# ============================================================
-# CLI
-# ============================================================
 
 def _build_arg_parser():
     parser = argparse.ArgumentParser(
@@ -406,10 +401,11 @@ def _build_arg_parser():
     parser.add_argument("--grasp-yaw-offset-rad", type=float, default=0.0,
                         help="Offset added to door yaw for grasp orientation. "
                              "Must match planner/grasp_yaw_offset_rad in planner.yaml.")
-    parser.add_argument("--wrist-roll-rad", type=float, default=0.0,
-                        help="Wrist roll (rad) for the IK test pose. "
-                             "Must match planning/grasp_wrist_roll_rad in planner.yaml. "
-                             "Use -1.5708 for palm-down grasp.")
+    parser.add_argument("--wrist-roll-rads", type=str, default="0.0",
+                        help="Comma-separated wrist roll values (rad) for IK test poses. "
+                             "One map slice is generated per roll. "
+                             "E.g. '0.0,-1.5708,-3.14159'. "
+                             "At runtime, planner/reachability_wrist_roll_rad selects the slice.")
     parser.add_argument("--theta-step-deg", type=float, default=22.5,
                         help="Base rotation step (deg) to test in connectivity check. "
                              "Should match 360/planner/theta_bins (default 22.5 for 16 bins). "
@@ -440,15 +436,15 @@ def _build_arg_parser():
     return parser
 
 
-# ============================================================
-# Entry point
-# ============================================================
-
 def main():
     parser = _build_arg_parser()
     args, _ = parser.parse_known_args()
 
     rospy.init_node("generate_reachability_map", anonymous=True)
+
+    wrist_roll_rads = [float(v.strip()) for v in args.wrist_roll_rads.split(',') if v.strip()]
+    if not wrist_roll_rads:
+        wrist_roll_rads = [0.0]
 
     x_bins = _linspace_step(args.x_min, args.x_max, args.x_step)
     y_bins = _linspace_step(args.y_min, args.y_max, args.y_step)
@@ -480,13 +476,17 @@ def main():
         frame_id=args.frame_id,
         fixed_z=args.fixed_z,
         grasp_yaw_offset_rad=args.grasp_yaw_offset_rad,
-        wrist_roll_rad=args.wrist_roll_rad,
+        wrist_roll_rads=wrist_roll_rads,
         theta_step_rad=np.radians(args.theta_step_deg),
     )
     elapsed = time.time() - t0
 
     _save_map(args.output, x_bins, y_bins, yaw_bins_rad,
-              quality, args.quality_threshold, args.fixed_z)
+              quality, args.quality_threshold, args.fixed_z,
+              wrist_roll_rads=wrist_roll_rads,
+              grasp_yaw_offset_rad=args.grasp_yaw_offset_rad,
+              group=args.group,
+              ee_link=args.ee_link)
 
     reachable_count = int(np.sum(quality >= args.quality_threshold))
     total = quality.size

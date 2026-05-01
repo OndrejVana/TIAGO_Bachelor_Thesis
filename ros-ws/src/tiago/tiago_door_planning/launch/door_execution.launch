@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
-  <!-- Door execution server — coordinates time-synchronised base + arm motion. -->
-
   <arg name="arm_controller_right"
        default="/arm_right_controller/follow_joint_trajectory"/>
   <arg name="arm_controller_left"
@@ -30,7 +28,9 @@
     <param name="torso_controller"     value="$(arg torso_controller)"/>
 
     <param name="action_name" value="execute_door_opening"/>
-    <param name="arm_approach_time" value="5.0"/>
-    <param name="max_base_lag_m"    value="0.15"/>
+    <param name="arm_approach_time"        value="5.0"/>
+    <param name="max_base_lag_m"           value="0.15"/>
+    <param name="start_lag_tolerance_m"    value="2.0"/>
+    <param name="start_lag_catchup_time_s" value="10.0"/>
   </node>
 </launch>

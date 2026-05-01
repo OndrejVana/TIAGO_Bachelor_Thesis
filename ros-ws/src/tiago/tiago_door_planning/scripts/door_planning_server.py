@@ -28,7 +28,6 @@ from tiago_door_planning.traj_gen import (
     build_handle_path_from_angles,
     build_handle_path_from_detected_frame,
     build_grasp_target_path_from_handle_path,
-    build_ee_path_from_approach_direction,
     densify_paths,
     ArmTrajConfig,
     MoveItWaypointIK,
@@ -63,7 +62,6 @@ class DoorPlanningServer(object):
         self._base_timing_cfg = self._create_base_timing_config()
         _, self._ik = self._create_arm_planner()
 
-        # Per-arm planners: hinge_left→right arm, hinge_right→left arm.
         self._planner_right, self._ik_right = self._create_arm_specific_planner("right")
         self._planner_left,  self._ik_left  = self._create_arm_specific_planner("left")
 
@@ -73,9 +71,6 @@ class DoorPlanningServer(object):
         self._init_subscribers()
         self._init_action_server()
 
-    # ============================================================
-    # Initialization
-    # ============================================================
 
     def _load_basic_params(self):
         self._frame_map = rospy.get_param("~frames/map", "map")
@@ -101,29 +96,7 @@ class DoorPlanningServer(object):
         )
 
     def _load_grasp_params(self):
-        self._use_approach_orientation = bool(
-            rospy.get_param("~planning/use_approach_orientation", True)
-        )
-        self._use_hinge_direction = bool(
-            rospy.get_param("~planning/use_hinge_direction", False)
-        )
-        self._hinge_direction_delta_scale = float(
-            rospy.get_param("~planning/hinge_direction_delta_scale", 1.0)
-        )
-        self._grasp_approach_offset = float(
-            rospy.get_param("~planning/grasp_approach_offset", 0.0)
-        )
-        self._grasp_lateral_offset = float(
-            rospy.get_param("~planning/grasp_lateral_offset", 0.0)
-        )
-        self._grasp_wrist_roll_rad = float(
-            rospy.get_param("~planning/grasp_wrist_roll_rad", -np.pi / 2)
-        )
-        self._grasp_yaw_offset_rad = float(
-            rospy.get_param("~planning/grasp_yaw_offset_rad", 0.0)
-        )
-
-        # Push grasp parameters (used when use_approach_orientation=false)
+        # Push grasp parameters
         self._grasp_offset_x = float(rospy.get_param("~planning/grasp_offset_x", 0.0))
         self._grasp_offset_y = float(rospy.get_param("~planning/grasp_offset_y", 0.0))
         self._grasp_offset_z = float(rospy.get_param("~planning/grasp_offset_z", 0.0))
@@ -131,7 +104,7 @@ class DoorPlanningServer(object):
         self._grasp_pitch_rad = float(rospy.get_param("~planning/grasp_pitch_rad", 0.0))
         self._grasp_yaw_rad = float(rospy.get_param("~planning/grasp_yaw_rad", 0.0))
 
-        # Pull grasp parameters (used when use_approach_orientation=false)
+        # Pull grasp parameters
         self._pull_grasp_offset_x = float(rospy.get_param("~planning/pull_grasp_offset_x", 0.0))
         self._pull_grasp_offset_y = float(rospy.get_param("~planning/pull_grasp_offset_y", 0.0))
         self._pull_grasp_offset_z = float(rospy.get_param("~planning/pull_grasp_offset_z", 0.0))
@@ -148,6 +121,7 @@ class DoorPlanningServer(object):
             max_ee_step_m=float(rospy.get_param("~monitor/max_ee_step_m", 0.20)),
             max_handle_step_m=float(rospy.get_param("~monitor/max_handle_step_m", 0.20)),
             arm_time_mismatch_tol=float(rospy.get_param("~monitor/arm_time_mismatch_tol", 0.50)),
+            n_per_sparse_step=self._arm_ik_n_per_segment,
         )
 
     def _create_door_model(self):
@@ -351,9 +325,6 @@ class DoorPlanningServer(object):
         )
         self._as.start()
 
-    # ============================================================
-    # Callbacks
-    # ============================================================
 
     def _cb_hinge(self, msg):
         self._hinge = msg
@@ -369,9 +340,6 @@ class DoorPlanningServer(object):
         self._occ = msg
         self._planner.set_occupancy(msg, occ_threshold=self._occ_thresh)
 
-    # ============================================================
-    # Basic helpers
-    # ============================================================
 
     def _get_base_pose(self):
         trans = self._tfbuf.lookup_transform(
@@ -434,9 +402,6 @@ class DoorPlanningServer(object):
             np.degrees(angles_rad[-1]) if angles_rad else 0.0
         )
 
-    # ============================================================
-    # Path building
-    # ============================================================
 
     def _build_handle_path(self, hinge_pose, handle_pose, hinge_side, goal, angles_rad):
         opening_sign = self._planner.opening_sign(goal.push_motion, hinge_side)
@@ -462,32 +427,6 @@ class DoorPlanningServer(object):
 
     def _build_ee_target_path(self, handle_path, push_motion, base_path=None,
                               hinge_yaw=None):
-        if self._use_approach_orientation and base_path is not None:
-            rospy.loginfo(
-                "[PlanningServer] Building EE target path using approach-direction orientation "
-                "(approach_offset=%.3f m, lateral_offset=%.3f m, wrist_roll=%.3f rad, "
-                "use_hinge_direction=%s, delta_scale=%.2f, hinge_yaw=%s, yaw_offset=%.3f rad)",
-                self._grasp_approach_offset,
-                self._grasp_lateral_offset,
-                self._grasp_wrist_roll_rad,
-                self._use_hinge_direction,
-                self._hinge_direction_delta_scale if self._use_hinge_direction else 0.0,
-                ("%.3f rad" % hinge_yaw) if hinge_yaw is not None else "None",
-                self._grasp_yaw_offset_rad,
-            )
-            return build_ee_path_from_approach_direction(
-                base_path=base_path,
-                handle_path=handle_path,
-                frame_id=self._frame_map,
-                approach_offset=self._grasp_approach_offset,
-                lateral_offset=self._grasp_lateral_offset,
-                wrist_roll_rad=self._grasp_wrist_roll_rad,
-                use_hinge_direction=self._use_hinge_direction,
-                hinge_direction_delta_scale=self._hinge_direction_delta_scale,
-                hinge_yaw=hinge_yaw,
-                grasp_yaw_offset_rad=self._grasp_yaw_offset_rad,
-            )
-
         if push_motion:
             ox = self._grasp_offset_x
             oy = self._grasp_offset_y
@@ -537,9 +476,6 @@ class DoorPlanningServer(object):
         self._log_execution_reference_summary(execution_samples)
         return execution_samples, base_times
 
-    # ============================================================
-    # Arm planning / monitoring / publishing
-    # ============================================================
 
     def _generate_arm_traj_if_requested(self, goal, ee_target_path, timestamps, fb,
                                          base_path=None, hinge_pose=None, handle_path=None):
@@ -606,9 +542,6 @@ class DoorPlanningServer(object):
             rospy.loginfo("[PlanningServer] Published arm trajectory for visualization "
                           "(/door_plan/display_trajectory)")
 
-    # ============================================================
-    # Result helpers
-    # ============================================================
 
     def _fill_success_result(self, res, base_path, handle_path, arm_traj, base_times, monitor_report):
         res.success = True
@@ -627,9 +560,6 @@ class DoorPlanningServer(object):
         res.success = False
         res.message = str(error)
 
-    # ============================================================
-    # Logging helpers
-    # ============================================================
 
     def _log_execution_reference_summary(self, execution_samples):
         if not execution_samples:
@@ -710,9 +640,6 @@ class DoorPlanningServer(object):
         for w in warnings:
             rospy.logwarn("[PlanningServer] Execution monitor warning: %s", w)
 
-    # ============================================================
-    # Public getters
-    # ============================================================
 
     def get_last_execution_reference(self):
         return self._last_execution_samples
@@ -720,9 +647,6 @@ class DoorPlanningServer(object):
     def get_last_execution_monitor_report(self):
         return self._last_execution_monitor_report
 
-    # ============================================================
-    # Action callback
-    # ============================================================
 
     def _select_arm_for_hinge_side(self, hinge_side):
         """
@@ -736,7 +660,6 @@ class DoorPlanningServer(object):
         fb = PlanDoorOpeningFeedback()
         res = PlanDoorOpeningResult()
 
-        # Capture defaults so the except/else restore is always safe.
         saved_planner = self._planner
         saved_ik      = self._ik
 

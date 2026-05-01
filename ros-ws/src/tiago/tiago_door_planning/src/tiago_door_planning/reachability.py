@@ -7,10 +7,7 @@ import numpy as np
 
 from .utils import angle_wrap
 
-
-# ============================================================
 # Geometric reachability
-# ============================================================
 
 def _world_to_robot_xy(base_xy, base_yaw, target_xy):
     """
@@ -128,28 +125,23 @@ def check_geometric_reachability(base_xy, base_yaw, grasp_xyz, cfg, debug=False)
     return True
 
 
-# ============================================================
-# Backend interface
-# ============================================================
-
 class ReachabilityBackendBase(object):
     def __init__(self, cfg):
         self.cfg = cfg
 
-    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, debug=False):
+    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, roll_rad=None, debug=False):
         raise NotImplementedError
+
+    def quality_at(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, roll_rad=None):
+        return 1.0
 
 
 class GeometricReachabilityBackend(ReachabilityBackendBase):
-    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, debug=False):
+    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, roll_rad=None, debug=False):
         return check_geometric_reachability(
             base_xy, base_yaw, grasp_xyz, self.cfg, debug=debug
         )
 
-
-# ============================================================
-# Offline reachability map
-# ============================================================
 
 class OfflineReachabilityMap(object):
     """
@@ -165,20 +157,35 @@ class OfflineReachabilityMap(object):
     """
 
     def __init__(self, x_bins, y_bins, yaw_bins_rad, reachable, fixed_z,
-                 quality=None, quality_threshold=0.25):
+                 quality=None, quality_threshold=0.25, wrist_roll_rad_bins=None):
         self.x_bins = np.asarray(x_bins, dtype=float)
         self.y_bins = np.asarray(y_bins, dtype=float)
         self.yaw_bins_rad = np.asarray(yaw_bins_rad, dtype=float)
-        self.reachable = np.asarray(reachable)
+        self.roll_bins = np.asarray(
+            wrist_roll_rad_bins if wrist_roll_rad_bins is not None else [0.0], dtype=float
+        )
         self.fixed_z = float(fixed_z)
-        self.quality = np.asarray(quality, dtype=float) if quality is not None else None
         self.quality_threshold = float(quality_threshold)
+
+        reachable_arr = np.asarray(reachable)
+        if reachable_arr.ndim == 3:
+            reachable_arr = reachable_arr[..., np.newaxis]
+        self.reachable = reachable_arr
+
+        if quality is not None:
+            quality_arr = np.asarray(quality, dtype=float)
+            if quality_arr.ndim == 3:
+                quality_arr = quality_arr[..., np.newaxis]
+            self.quality = quality_arr
+        else:
+            self.quality = None
+
         self._validate_shapes()
 
     def _validate_shapes(self):
-        if self.reachable.ndim != 3:
-            raise ValueError("Reachability map 'reachable' must be 3D [Nx, Ny, Nyaw].")
-        expected = (len(self.x_bins), len(self.y_bins), len(self.yaw_bins_rad))
+        if self.reachable.ndim != 4:
+            raise ValueError("Reachability map 'reachable' must be 4D [Nx, Ny, Nyaw, Nroll].")
+        expected = (len(self.x_bins), len(self.y_bins), len(self.yaw_bins_rad), len(self.roll_bins))
         if self.reachable.shape != expected:
             raise ValueError(
                 "Reachability map shape mismatch: expected %s, got %s" %
@@ -199,6 +206,12 @@ class OfflineReachabilityMap(object):
         quality = data["quality"].astype(float) if "quality" in data else None
         quality_threshold = float(data["quality_threshold"]) if "quality_threshold" in data else 0.25
 
+        if "wrist_roll_rad_bins" in data:
+            roll_bins = list(data["wrist_roll_rad_bins"].ravel())
+        else:
+            gen_roll = float(data["gen_wrist_roll_rad"]) if "gen_wrist_roll_rad" in data else 0.0
+            roll_bins = [gen_roll]
+
         return OfflineReachabilityMap(
             x_bins=data["x_bins"],
             y_bins=data["y_bins"],
@@ -207,6 +220,7 @@ class OfflineReachabilityMap(object):
             fixed_z=fixed_z,
             quality=quality,
             quality_threshold=quality_threshold,
+            wrist_roll_rad_bins=roll_bins,
         )
 
     @staticmethod
@@ -235,25 +249,24 @@ class OfflineReachabilityMap(object):
         iyaw = self._nearest_yaw_index(self.yaw_bins_rad, yaw_rel)
         return ix, iy, iyaw
 
-    def _interpolated_quality(self, x_rel, y_rel, yaw_rel):
+    def _interpolated_quality(self, x_rel, y_rel, yaw_rel, roll_rad=None):
         """Linearly interpolate quality between the two nearest yaw bins.
-
+        Roll dimension uses nearest-neighbour lookup.
         """
         if self.quality is None:
             return None
 
         ix = self._nearest_index(self.x_bins, x_rel)
         iy = self._nearest_index(self.y_bins, y_rel)
+        iroll = self._nearest_index(self.roll_bins, roll_rad) if roll_rad is not None else 0
 
         yaws = self.yaw_bins_rad
         Nyaw = len(yaws)
 
-        # Angular differences to all bins (wrapped to [-pi, pi])
         diffs = ((yaws - float(yaw_rel) + np.pi) % (2.0 * np.pi)) - np.pi
         abs_diffs = np.abs(diffs)
         i0 = int(np.argmin(abs_diffs))
 
-        # Find the second-nearest bin (on the opposite angular side)
         if diffs[i0] >= 0.0:
             i1 = (i0 - 1) % Nyaw
         else:
@@ -263,35 +276,36 @@ class OfflineReachabilityMap(object):
         d1 = abs(((yaws[i1] - float(yaw_rel) + np.pi) % (2.0 * np.pi)) - np.pi)
         span = d0 + d1
         if span < 1e-9:
-            return float(self.quality[ix, iy, i0])
+            return float(self.quality[ix, iy, i0, iroll])
 
-        # Linear interpolation: weight towards the nearer bin
         w0 = 1.0 - d0 / span
         w1 = 1.0 - w0
-        return float(w0 * self.quality[ix, iy, i0] + w1 * self.quality[ix, iy, i1])
+        return float(w0 * self.quality[ix, iy, i0, iroll] + w1 * self.quality[ix, iy, i1, iroll])
 
-    def query(self, x_rel, y_rel, yaw_rel):
+    def query(self, x_rel, y_rel, yaw_rel, roll_rad=None):
         """Return True if the cell is classified as reachable."""
         if not self._is_inside_xy_bounds(x_rel, y_rel):
             return False
-        q = self._interpolated_quality(x_rel, y_rel, yaw_rel)
+        q = self._interpolated_quality(x_rel, y_rel, yaw_rel, roll_rad=roll_rad)
         if q is not None:
             return q >= self.quality_threshold
         ix, iy, iyaw = self._lookup_indices(x_rel, y_rel, yaw_rel)
-        return bool(self.reachable[ix, iy, iyaw] > 0.5)
+        iroll = self._nearest_index(self.roll_bins, roll_rad) if roll_rad is not None else 0
+        return bool(self.reachable[ix, iy, iyaw, iroll] > 0.5)
 
-    def query_quality(self, x_rel, y_rel, yaw_rel):
+    def query_quality(self, x_rel, y_rel, yaw_rel, roll_rad=None):
         """
         Return float quality score in [0, 1].
         For binary maps (no quality array), returns 1.0 if reachable, 0.0 otherwise.
         """
         if not self._is_inside_xy_bounds(x_rel, y_rel):
             return 0.0
-        q = self._interpolated_quality(x_rel, y_rel, yaw_rel)
+        q = self._interpolated_quality(x_rel, y_rel, yaw_rel, roll_rad=roll_rad)
         if q is not None:
             return q
         ix, iy, iyaw = self._lookup_indices(x_rel, y_rel, yaw_rel)
-        return 1.0 if bool(self.reachable[ix, iy, iyaw] > 0.5) else 0.0
+        iroll = self._nearest_index(self.roll_bins, roll_rad) if roll_rad is not None else 0
+        return 1.0 if bool(self.reachable[ix, iy, iyaw, iroll] > 0.5) else 0.0
 
 
 class OfflineMapReachabilityBackend(ReachabilityBackendBase):
@@ -320,7 +334,7 @@ class OfflineMapReachabilityBackend(ReachabilityBackendBase):
             return angle_wrap(float(grasp_yaw) - float(base_yaw))
         return 0.0
 
-    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, debug=False):
+    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, roll_rad=None, debug=False):
         if not self._check_z_compatibility(grasp_xyz, debug=debug):
             return False
         x_rel, y_rel = self._relative_pose_in_robot_frame(base_xy, base_yaw, grasp_xyz)
@@ -332,14 +346,14 @@ class OfflineMapReachabilityBackend(ReachabilityBackendBase):
                       (x_rel, y_rel))
             return False
         yaw_rel = self._relative_grasp_yaw(base_yaw, grasp_yaw)
-        ok = self._map.query(x_rel, y_rel, yaw_rel)
+        ok = self._map.query(x_rel, y_rel, yaw_rel, roll_rad=roll_rad)
         if debug:
             print("[OfflineMap] %s: x_rel=%.3f y_rel=%.3f yaw_rel=%.1f deg z=%.3f" %
                   ("ACCEPT" if ok else "REJECT",
                    x_rel, y_rel, np.degrees(yaw_rel), grasp_xyz[2]))
         return ok
 
-    def quality_at(self, base_xy, base_yaw, grasp_xyz, grasp_yaw):
+    def quality_at(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, roll_rad=None):
         """
         Return float quality score [0..1] for a grasp pose from the given base.
         Returns 0.0 if z is out of tolerance or the position is outside map bounds.
@@ -349,7 +363,7 @@ class OfflineMapReachabilityBackend(ReachabilityBackendBase):
             return 0.0
         x_rel, y_rel = self._relative_pose_in_robot_frame(base_xy, base_yaw, grasp_xyz)
         yaw_rel = self._relative_grasp_yaw(base_yaw, grasp_yaw)
-        return self._map.query_quality(x_rel, y_rel, yaw_rel)
+        return self._map.query_quality(x_rel, y_rel, yaw_rel, roll_rad=roll_rad)
 
 
 def make_reachability_backend(cfg):

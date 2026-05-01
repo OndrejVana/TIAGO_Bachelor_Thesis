@@ -1,18 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-Visualise offline arm reachability maps.
-
-Single-arm mode  (original behaviour, fully backward-compatible):
-  --map PATH
-
-Dual-arm mode (TIAGo++):
-  --map-right PATH --map-left PATH
-
-In dual-arm mode every plot shows three panels:
-  Right arm | Left arm | Union (right OR left)
-A difference plot is also available via --diff-slice-deg.
-"""
 
 from __future__ import print_function, division, unicode_literals
 
@@ -21,11 +8,6 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-
-
-# ============================================================
-# Basic helpers
-# ============================================================
 
 def nearest_index(values, q):
     values = np.asarray(values, dtype=float)
@@ -36,11 +18,6 @@ def nearest_yaw_index(yaw_bins_rad, q_yaw):
     yaw_bins_rad = np.asarray(yaw_bins_rad, dtype=float)
     diffs = np.abs(((yaw_bins_rad - float(q_yaw) + np.pi) % (2.0 * np.pi)) - np.pi)
     return int(np.argmin(diffs))
-
-
-# ============================================================
-# Map loading
-# ============================================================
 
 def _validate_map_exists(path):
     if not os.path.exists(path):
@@ -82,11 +59,6 @@ def _maps_compatible(ma, mb):
         np.allclose(ma[1], mb[1]) and   # y_bins
         np.allclose(ma[2], mb[2])        # yaw_bins_rad
     )
-
-
-# ============================================================
-# Summary printing
-# ============================================================
 
 def _reachable_stats(reachable):
     total           = reachable.size
@@ -153,11 +125,6 @@ def print_dual_summary(right_map, left_map):
         print("(Maps have different grid extents — combined stats not available)")
         print()
 
-
-# ============================================================
-# Internal data helpers
-# ============================================================
-
 def _display_data(reachable, quality):
     """Return (data_array, colorbar_label, vmin, vmax)."""
     if quality is not None:
@@ -166,7 +133,6 @@ def _display_data(reachable, quality):
 
 
 def _yaw_slice_image(data, iyaw):
-    # data: [Nx, Ny, Nyaw] → image rows/cols: [Ny, Nx]
     return data[:, :, iyaw].T
 
 
@@ -177,11 +143,6 @@ def _xy_extent(x_bins, y_bins):
 def _draw_robot_marker(ax):
     """Draw a small robot silhouette at the origin of the robot frame."""
     ax.plot(0, 0, marker="^", color="red", markersize=9, zorder=5, label="robot")
-
-
-# ============================================================
-# Single-arm plots  (backward-compatible)
-# ============================================================
 
 def plot_yaw_slice(x_bins, y_bins, yaw_bins_rad, reachable, yaw_deg,
                    quality=None, save_path=None, label=""):
@@ -231,11 +192,6 @@ def plot_xy_yaw_profile(x_bins, y_bins, yaw_bins_rad, reachable, x_query, y_quer
     ax.grid(True)
     fig.tight_layout()
     _show_or_save(save_path)
-
-
-# ============================================================
-# Dual-arm plots
-# ============================================================
 
 def _add_imshow(ax, img, extent, vmin, vmax, cmap="viridis"):
     return ax.imshow(img, origin="lower", extent=extent, aspect="auto",
@@ -404,11 +360,6 @@ def plot_dual_coverage_overview(right_map, left_map, save_path=None):
     fig.tight_layout()
     _show_or_save(save_path)
 
-
-# ============================================================
-# Shared output helper
-# ============================================================
-
 def _show_or_save(save_path):
     if save_path:
         plt.savefig(save_path, bbox_inches="tight", dpi=150)
@@ -416,11 +367,6 @@ def _show_or_save(save_path):
         plt.close()
     else:
         plt.show()
-
-
-# ============================================================
-# CLI
-# ============================================================
 
 def _build_arg_parser():
     parser = argparse.ArgumentParser(

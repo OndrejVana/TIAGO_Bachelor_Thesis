@@ -132,7 +132,7 @@ roslaunch tiago_door_bringup main.launch
 ### 4. Real Robot Deployment
 
 ```bash
-roslaunch tiago_door_bringup main.launch simulation:=false use_door_perception:=false 
+roslaunch tiago_door_bringup main.launch simulation:=false use_door_perception:=false use_navigation:=false use_arm_manipulation:=false
 ```
 
 - Set ROS master to the robot (see robot manual, pages 63–64):
@@ -141,7 +141,7 @@ roslaunch tiago_door_bringup main.launch simulation:=false use_door_perception:=
 export ROS_MASTER_URI=http://tiago-114c:11311
 
 # Ethernet
-export ROS_IP=10.34.2.76
+export ROS_IP=10.68.0.128
 
 
 # Wi-Fi

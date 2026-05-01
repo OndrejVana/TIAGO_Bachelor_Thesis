@@ -3,6 +3,7 @@ from __future__ import print_function, division
 
 import numpy as np
 import time as time_module
+import rospy
 
 from .door_collision import (
     DoorGeom,
@@ -17,11 +18,6 @@ from .reachability import (
     OfflineReachabilityMap,
     make_reachability_backend,
 )
-
-
-# ============================================================
-# Config / results
-# ============================================================
 
 class FeasConfig(object):
     def __init__(self,
@@ -41,7 +37,8 @@ class FeasConfig(object):
                  reachability_z_tol=0.15,
                  reachability_y_exclusion_half_width_m=0.0,
                  use_grasp_yaw=True,
-                 grasp_yaw_offset_rad=0.0):
+                 grasp_yaw_offset_rad=0.0,
+                 reachability_wrist_roll_rad=None):
         self.angle_step_deg = angle_step_deg
         self.open_angle_rad = open_angle_rad
         self.robot_radius = robot_radius
@@ -63,6 +60,9 @@ class FeasConfig(object):
         self.reachability_y_exclusion_half_width_m = float(reachability_y_exclusion_half_width_m)
         self.use_grasp_yaw = bool(use_grasp_yaw)
         self.grasp_yaw_offset_rad = float(grasp_yaw_offset_rad)
+        self.reachability_wrist_roll_rad = (
+            float(reachability_wrist_roll_rad) if reachability_wrist_roll_rad is not None else None
+        )
 
 
 class LambdaResult(object):
@@ -70,17 +70,13 @@ class LambdaResult(object):
     Result of feasible door-angle reconstruction for one base state.
     """
     def __init__(self, angles0, angles1, feasible_mask,
-                 sampled_angles_rad=None, components=None):
+                 sampled_angles_rad=None, components=None, quality_by_angle=None):
         self.angles0 = angles0
         self.angles1 = angles1
         self.feasible_mask = feasible_mask
         self.sampled_angles_rad = sampled_angles_rad if sampled_angles_rad is not None else []
         self.components = components if components is not None else []
-
-
-# ============================================================
-# Lambda computation
-# ============================================================
+        self.quality_by_angle = quality_by_angle if quality_by_angle is not None else {}
 
 class LambdaComputer(object):
     def __init__(self, cfg):
@@ -167,9 +163,12 @@ class LambdaComputer(object):
         Evaluate reachability backend for all sampled handle poses.
         grasp_yaw_extra_offset is added to grasp_yaw only (not handle positions).
         Pass np.pi for pull doors so the robot faces the handle from the correct side.
+        Returns (reachable, quality_by_angle) where quality_by_angle maps angle to score.
         """
         n = len(door_yaws)
         reachable = np.zeros(n, dtype=bool)
+        quality_by_angle = {}
+        roll_rad = getattr(self.cfg, 'reachability_wrist_roll_rad', None)
 
         for i in range(n):
             handle_xyz = [
@@ -183,16 +182,26 @@ class LambdaComputer(object):
                 + float(grasp_yaw_extra_offset)
             )
 
-            debug_this = (i == 0)
+            debug_this = True
             reachable[i] = self._reachability.is_reachable(
                 base_xy=base_xy,
                 base_yaw=base_yaw,
                 grasp_xyz=handle_xyz,
                 grasp_yaw=grasp_yaw,
+                roll_rad=roll_rad,
                 debug=debug_this,
             )
 
-        return reachable
+            if reachable[i] and hasattr(self._reachability, 'quality_at'):
+                quality_by_angle[float(door_yaws[i])] = self._reachability.quality_at(
+                    base_xy=base_xy,
+                    base_yaw=base_yaw,
+                    grasp_xyz=handle_xyz,
+                    grasp_yaw=grasp_yaw,
+                    roll_rad=roll_rad,
+                )
+
+        return reachable, quality_by_angle
 
     def _compute_feasible_mask(self, base_xy, hinge_xy, hinge_yaw, angles_rad,
                                door_geom, occ_grid, occ_thresh, reachable,
@@ -249,7 +258,7 @@ class LambdaComputer(object):
             hinge_xy, hinge_yaw, handle_radius, angles_rad, opening_sign
         )
 
-        reachable = self._compute_reachable_mask(
+        reachable, quality_by_angle = self._compute_reachable_mask(
             base_xy, base_yaw, door_yaws, handle_positions,
             grasp_yaw_extra_offset=grasp_yaw_extra_offset
         )
@@ -263,12 +272,25 @@ class LambdaComputer(object):
         components = self._components_1d(feasible_list)
         angles0, angles1 = self._classify_intervals_from_components(components, angles_rad)
 
+        if not angles0:
+            n_total = len(angles_rad)
+            n_reach = int(np.sum(reachable))
+            n_feas  = int(np.sum(feasible))
+            rospy.logwarn(
+                "[LambdaComputer] angles0 empty. "
+                "base=(%.2f, %.2f, %.1f deg) "
+                "reachable=%d/%d  feasible=%d/%d  components=%d",
+                float(base_xy[0]), float(base_xy[1]), float(np.degrees(base_yaw)),
+                n_reach, n_total, n_feas, n_total, len(components),
+            )
+
         result = LambdaResult(
             angles0=angles0,
             angles1=angles1,
             feasible_mask=feasible_list,
             sampled_angles_rad=angles_rad.tolist(),
             components=[list(c) for c in components],
+            quality_by_angle=quality_by_angle,
         )
 
         self._cache[k] = result

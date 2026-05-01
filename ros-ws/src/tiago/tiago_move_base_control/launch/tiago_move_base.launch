@@ -32,9 +32,7 @@
         latch_xy_goal_tolerance: false
       </rosparam>
 
-      <!-- ========================= -->
       <!-- GLOBAL COSTMAP (STATIC)   -->
-      <!-- ========================= -->
       <rosparam param="global_costmap">
         global_frame: map
         robot_base_frame: base_footprint
@@ -55,7 +53,7 @@
 
         static_layer:
           map_topic: /map
-          subscribe_to_updates: false
+          subscribe_to_updates: true
 
         # Door masking layer (toggle via /door_mask/enabled)
         door_mask:
@@ -63,8 +61,8 @@
           enabled_topic: "/door_mask/enabled"
           door_pose_topic: "/door/doorway_pose_map"  # PoseStamped in map frame
           width_m: 1.0
-          thickness_m: 0.6
-          margin_m: 0.25
+          thickness_m: 1.2
+          margin_m: 0.5
           set_unknown_instead_of_free: false
 
         inflation_layer:
@@ -72,9 +70,7 @@
           cost_scaling_factor: 10.0
       </rosparam>
 
-      <!-- ========================= -->
       <!-- LOCAL COSTMAP (ROLLING)  -->
-      <!-- ========================= -->
       <rosparam param="local_costmap">
         global_frame: odom
         robot_base_frame: base_footprint
@@ -109,8 +105,8 @@
           enabled_topic: "/door_mask/enabled"
           door_pose_topic: "/door/doorway_pose_map"  # PoseStamped in map frame
           width_m: 1.0
-          thickness_m: 0.6
-          margin_m: 0.25
+          thickness_m: 1.2
+          margin_m: 0.5
           set_unknown_instead_of_free: false
 
         inflation_layer:

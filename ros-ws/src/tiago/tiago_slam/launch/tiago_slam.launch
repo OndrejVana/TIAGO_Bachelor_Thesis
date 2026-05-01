@@ -89,9 +89,11 @@
     <param name="Icp/Iterations"               value="10"/>
 
     <param name="Grid/FromDepth" value="true"/>
-    <param name="Grid/RangeMax"  value="8.0"/>
+    <param name="Grid/RangeMax"  value="5.0"/>
     <param name="Grid/CellSize"  value="0.05"/>
     <param name="Grid/3D"        value="false"/>
+    <param name="Grid/NormalsSegmentation" value="true"/>
+    <param name="Grid/MaxGroundHeight" value="0.2"/>
 
     <param name="publish_tf"        value="true"/>
     <param name="tf_delay"          value="0.05"/>

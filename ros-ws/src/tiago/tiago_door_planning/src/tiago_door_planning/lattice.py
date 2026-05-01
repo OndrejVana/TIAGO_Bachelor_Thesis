@@ -42,10 +42,6 @@ class LatticeConfig(object):
         self.allow_reverse = allow_reverse
 
 
-# ============================================================
-# Basic conversions
-# ============================================================
-
 def wrap_theta_bin(it, bins):
     return it % bins
 
@@ -68,10 +64,6 @@ def pose_to_state(p, d, cfg):
     it = int(round((p.yaw % (2 * np.pi)) / (2 * np.pi) * cfg.theta_bins)) % cfg.theta_bins
     return DiscState(ix, iy, it, d)
 
-
-# ============================================================
-# Internal helpers for primitive generation
-# ============================================================
 
 def _sample_parameter(n):
     """
@@ -187,10 +179,6 @@ def _is_rev_arc_kind(kind):
 def _is_rotation_kind(kind):
     return kind in ("rotL", "rotR")
 
-
-# ============================================================
-# Public primitive API
-# ============================================================
 
 def primitive_samples(p0, kind, cfg, n=10):
     """

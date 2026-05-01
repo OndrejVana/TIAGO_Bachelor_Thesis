@@ -26,6 +26,8 @@ tiago_door_planning/
 │   ├── door_planning_server.py        # Planning action server node
 │   ├── door_execution_server.py       # Execution action server node
 │   ├── test_door_opening.py           # End-to-end plan + execute test node
+│   ├── test_grasp_pose.py             # Interactive grasp orientation tuning
+│   ├── tune_base_pid.py               # Drive-base PI controller tuning
 │   ├── generate_reachability_map.py   # Offline reachability map generator
 │   └── visualize_reachability_map.py  # Reachability map visualizer (single & dual arm)
 ├── src/
@@ -91,7 +93,7 @@ roslaunch tiago_door_planning door_execution.launch
 
 # 4. Trigger a plan-only test (plan a push door, no execution)
 rosrun tiago_door_planning test_door_opening.py \
-  _angle:=1.05 _push:=true _execute:=false _plan_time:=10.0
+  _angle:=1.0 _push:=false _execute:=false _plan_time:=200.0
 ```
 
 ---
@@ -104,8 +106,8 @@ roslaunch tiago_door_planning door_planning.launch
 
 # Planning server — offline map backend (TIAGo++ dual-arm)
 roslaunch tiago_door_planning door_planning.launch \
-  reachability_map_right_arm:=$(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
-  reachability_map_left_arm:=$(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz
+  reachability_map_right_arm:=$(rospack find tiago_door_planning)/maps/reachability_map_2_right.npz \
+  reachability_map_left_arm:=$(rospack find tiago_door_planning)/maps/reachability_map_2_left.npz
 
 # Execution server
 roslaunch tiago_door_planning door_execution.launch
@@ -245,16 +247,112 @@ An end-to-end integration node that calls the planning and (optionally) executio
 ```bash
 # Plan only (push door, 60° target, 10 s budget) — safe, no robot motion
 rosrun tiago_door_planning test_door_opening.py \
-  _angle:=1.05 _push:=true _execute:=false _plan_time:=10.0
+  _angle:=1.5 _push:=true _execute:=false _plan_time:=200.0
 
 # Plan + execute at half speed (pull door)
 rosrun tiago_door_planning test_door_opening.py \
-  _angle:=1.05 _push:=false _execute:=true _scaling:=0.5
+  _angle:=1.05 _push:=false _execute:=true _scaling:=0.5 _plan_time:=200
 
 # Plan only, skip arm IK (faster, just checks base path)
 rosrun tiago_door_planning test_door_opening.py \
   _angle:=1.05 _push:=true _execute:=false _arm:=false
 ```
+
+---
+
+## Grasp orientation tuning — `test_grasp_pose.py`
+
+Interactive script for tuning the EE grasp orientation in `config/planner.yaml`.
+It applies the same handle→EE transform the planner uses and either visualises the target in
+RViz or commands the arm via the `move_to_pose` service.
+
+### Parameters
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `~use_handle` | `false` | `false`: fixed point in `base_footprint`; `true`: handle-relative mode |
+| `~roll` | `0.0` | EE roll in handle frame (degrees) |
+| `~pitch` | `0.0` | EE pitch in handle frame (degrees) |
+| `~yaw` | `0.0` | EE yaw in handle frame (degrees) |
+| `~offset_x` | `0.0` | X offset in handle frame (m), handle-relative mode only |
+| `~offset_y` | `0.0` | Y offset in handle frame (m), handle-relative mode only |
+| `~offset_z` | `0.0` | Z offset in handle frame (m), handle-relative mode only |
+| `~approach` | `-0.05` | Pre-grasp retreat along handle X (m), handle-relative mode only |
+| `~x` / `~y` / `~z` | `0.55`/`-0.20`/`1.00` | Fixed target position in `base_footprint` (fixed mode only) |
+| `~execute` | `true` | `false`: publish to RViz only, do not move arm |
+| `~vel` | `0.2` | Velocity scaling for `move_to_pose` |
+
+### Grasp pose usage
+
+```bash
+# Fixed point in base_footprint — tune without SLAM/handle pose
+rosrun tiago_door_planning test_grasp_pose.py _pitch:=90 _execute:=false
+
+# Move arm to fixed point
+rosrun tiago_door_planning test_grasp_pose.py _pitch:=90 _vel:=0.2
+
+# Handle-relative mode (requires /door/handle_pose_map)
+rosrun tiago_door_planning test_grasp_pose.py _use_handle:=true _pitch:=90 _execute:=false
+rosrun tiago_door_planning test_grasp_pose.py _use_handle:=true _pitch:=90 _vel:=0.2
+
+# Visualise in RViz:  PoseStamped -> /test_grasp_pose/target
+#                     Marker      -> /test_grasp_pose/target_marker
+```
+
+The script prints `planner.yaml values (rad)` — copy those directly into
+`grasp_pitch_rad` / `grasp_yaw_rad` / `grasp_roll_rad` in `config/planner.yaml`.
+
+---
+
+## Drive-base PI tuning — `tune_base_pid.py`
+
+Standalone script for tuning the PI velocity controller used during door execution.
+The robot oscillates between two poses while publishing error and velocity signals for
+`rqt_plot`. Runs independently of the planning and execution servers.
+
+### PI tuning parameters
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `~mode` | `linear` | `linear`: forward/backward; `angular`: in-place rotation |
+| `~step` | `0.5` | Distance (m) for linear mode, angle (deg) for angular mode |
+| `~repeats` | `5` | Number of back-and-forth cycles |
+| `~settle` | `0.5` | Dwell time at each goal (s) |
+| `~pos_tol` | `0.02` | Position goal tolerance (m) |
+| `~ang_tol` | `0.02` | Yaw goal tolerance (rad, ≈ 1°) |
+| `~rate` | `20.0` | Control loop rate (Hz) |
+| `~kp_linear` | `1.0` | Proportional gain — linear |
+| `~ki_linear` | `0.2` | Integral gain — linear |
+| `~kp_angular` | `2.0` | Proportional gain — angular |
+| `~ki_angular` | `0.2` | Integral gain — angular |
+| `~max_linear` | `0.3` | Maximum linear velocity (m/s) |
+| `~max_angular` | `0.6` | Maximum angular velocity (rad/s) |
+
+### PI tuning usage
+
+```bash
+# Linear test — 0.5 m forward and back, 5 cycles
+rosrun tiago_door_planning tune_base_pid.py _mode:=linear _step:=0.5 _repeats:=5
+
+# Angular test — 90° left and back, 5 cycles
+rosrun tiago_door_planning tune_base_pid.py _mode:=angular _step:=90 _repeats:=5
+
+# Override gains
+rosrun tiago_door_planning tune_base_pid.py _mode:=linear _kp_linear:=1.5 _ki_linear:=0.3
+
+# Plot errors and commands while the script runs
+rqt_plot /tune_pid/linear_error /tune_pid/cmd_linear
+rqt_plot /tune_pid/angular_error /tune_pid/cmd_angular
+```
+
+### Tuning workflow
+
+1. Set `ki_linear=0` and `ki_angular=0`. Increase `kp_*` until you get fast response without oscillation.
+2. Add `ki_*` slowly (0.1 steps) to eliminate steady-state position error.
+3. Copy the final values into `door_execution_server.py` ROS params or pass them via the launchfile.
+
+Matched defaults (`kp_linear=1.0`, `ki_linear=0.2`, `kp_angular=2.0`, `ki_angular=0.2`) are the
+same as `door_execution_server.py` so the tuned values transfer directly.
 
 ---
 
@@ -342,6 +440,7 @@ rosrun tiago_door_planning test_door_opening.py \
 | `planner/reachability_fixed_z` | `1.05` | Handle height at map generation (m) |
 | `planner/reachability_z_tol` | `0.15` | Z-tolerance for map lookup (m) |
 | `planner/use_grasp_yaw` | `true` | Include grasp yaw in map lookup |
+| `planner/reachability_wrist_roll_rad` | `0.0` | Wrist roll slice to use at query time — must be one of the values in `wrist_roll_rad_bins` stored in the NPZ (set at generation with `--wrist-roll-rads`). Change this to switch roll without regenerating maps. |
 | `planning/grasp_yaw_offset_rad` | `-1.5708` | Grasp yaw offset (rad) — shared with EE path building; must match `--grasp-yaw-offset-rad` used at map generation |
 | `planner/monotonic_angle_tol_rad` | `0.00873` | Monotonicity tolerance (rad, ≈0.5°) |
 
@@ -373,16 +472,17 @@ rosrun tiago_door_planning test_door_opening.py \
 | `costs/w_reverse_straight` | `5.0` | Penalty for straight reverse primitive |
 | `costs/w_reverse_arc` | `2.0` | Penalty for reverse arc primitives |
 | `costs/w_rotation` | `10.0` | Penalty for in-place rotation |
+| `costs/w_quality` | `2.0` | Soft penalty for low-connectivity reachability cells — steers the base path away from kinematic branch boundaries that cause arm controller aborts. Increase if hard aborts persist; set `0.0` to disable. |
 
 ### MoveIt arm trajectory
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `moveit/group` | `arm_torso` | Fallback / single-arm MoveIt group |
+| `moveit/group` | `arm` | Fallback / single-arm MoveIt group |
 | `moveit/ee_link` | `""` | End-effector link (empty = MoveIt default) |
-| `moveit/group_right_arm` | `arm_right_torso` | TIAGo++ right arm group |
+| `moveit/group_right_arm` | `arm_right` | TIAGo++ right arm group |
 | `moveit/ee_link_right_arm` | `arm_right_7_link` | Right arm EE link |
-| `moveit/group_left_arm` | `arm_left_torso` | TIAGo++ left arm group |
+| `moveit/group_left_arm` | `arm_left` | TIAGo++ left arm group |
 | `moveit/ee_link_left_arm` | `arm_left_7_link` | Left arm EE link |
 | `moveit/ik_timeout` | `0.1` | Per-call IK timeout × 10 attempts = 1 s max (s) |
 | `moveit/plan_time` | `10.0` | MoveIt planning time (s) |
@@ -404,7 +504,6 @@ rosrun tiago_door_planning test_door_opening.py \
 | `kp_angular` | `2.0` | Angular proportional gain |
 | `arm_controller_right` | `/arm_right_controller/follow_joint_trajectory` | Right-arm controller action |
 | `arm_controller_left` | `/arm_left_controller/follow_joint_trajectory` | Left-arm controller action |
-| `torso_controller` | `/torso_controller/follow_joint_trajectory` | Torso controller action |
 
 ### Execution monitor
 
@@ -432,58 +531,114 @@ Two backends are selected via `planner/reachability_backend`:
 
 ### What the map encodes
 
-Each cell `(x_rel, y_rel, yaw_rel)` stores a quality score `q ∈ [0, 1]`:
+Each cell `(x_rel, y_rel, yaw_rel, roll)` stores a quality score `q ∈ [0, 1]`:
 
-```t
+```text
 q = robustness × connectivity
 ```
 
 - **Robustness** `ρ` — IK success fraction over `n_seeds = 4` random seeds. Seeds from the previous yaw bin are reused first to keep the arm in the same configuration as the door rotates.
-- **Connectivity** `γ` — minimum fraction of adjacent cells reachable from any valid arm configuration, subject to a `max_joint_jump = 1.5 rad` check. Neighbours: `±x`, `±y` (translation), `±yaw` (door rotation), `±θ` (in-place rotation). The yaw-axis neighbours are critical — they ensure the arm can follow the handle continuously as the door opens.
+- **Connectivity** `γ` — minimum fraction of adjacent cells reachable from any valid arm configuration, subject to a `max_joint_jump = 1.5 rad` check. Neighbours: `±x`, `±y` (translation), `±yaw` (door rotation), `±θ` (in-place rotation). The yaw-axis neighbours are critical — they ensure the arm can follow the handle continuously as the door opens. Low connectivity indicates a kinematic branch boundary.
 
-At query time, quality is **linearly interpolated** between the two nearest yaw bins.
+The map is **4-D**: `reachable[Nx, Ny, Nyaw, Nroll]` and `quality[Nx, Ny, Nyaw, Nroll]`.
+The roll axis stores one slice per value given to `--wrist-roll-rads`. Old 3-D maps (single roll) are loaded automatically and treated as a single-roll 4-D map.
+
+At query time, quality is **linearly interpolated** between the two nearest yaw bins, and the nearest roll bin is selected via `planner/reachability_wrist_roll_rad`.
 A cell is classified reachable if `q ≥ 0.25` (configurable).
+
+The quality score is also used as a **soft cost** during planning (`costs/w_quality`): cells near kinematic branch boundaries (low connectivity → low `q`) are penalised, steering the base path away from poses that cause arm controller aborts.
 
 ### Generation — TIAGo++ (two maps required)
 
-> **Critical:** `--wrist-roll-rad`, `--grasp-yaw-offset-rad`, `--max-joint-jump-rad`, `--fixed-z`, and `--theta-step-deg` **must exactly match** the corresponding values in `config/planner.yaml`. Mismatches cause IK failures during execution.
+> **Critical — orientation must match `config/planner.yaml`.**
+> `--grasp-yaw-offset-rad` must equal `planner/grasp_yaw_offset_rad_{arm}_arm`.
+> `--max-joint-jump-rad`, `--fixed-z`, and `--theta-step-deg` must also match planner.yaml.
+>
+> `--wrist-roll-rads` takes a comma-separated list. The map stores one slice per roll value;
+> at runtime `planner/reachability_wrist_roll_rad` in `planner.yaml` selects which slice to use —
+> **no need to regenerate when you change the grasp roll**, just update that one parameter.
+
+Current values in `config/planner.yaml`:
+
+| Arm   | `--grasp-yaw-offset-rad`                             | `--wrist-roll-rads`       | Runtime `reachability_wrist_roll_rad` |
+|-------|------------------------------------------------------|---------------------------|---------------------------------------|
+| right | `-1.5708` (`planner/grasp_yaw_offset_rad_right_arm`) | `0.0,-1.5708,-3.14159`    | `0.0` (default, tune as needed)       |
+| left  | `0.0`     (`planner/grasp_yaw_offset_rad_left_arm`)  | `0.0,-1.5708,-3.14159`    | `0.0` (default, tune as needed)       |
+
+**If you change `grasp_yaw_offset_rad` in `planner.yaml`, regenerate both maps.
+If you only change the wrist roll (`grasp_roll_rad`), update `planner/reachability_wrist_roll_rad` — no regeneration needed.**
+
+#### Verify an existing map's generation parameters
+
+```bash
+python3 -c "
+import numpy as np, sys
+d = np.load(sys.argv[1])
+print('wrist_roll_rad_bins :', d['wrist_roll_rad_bins'] if 'wrist_roll_rad_bins' in d else [d['gen_wrist_roll_rad']])
+print('grasp_yaw_offset_rad:', d['gen_grasp_yaw_offset_rad'] if 'gen_grasp_yaw_offset_rad' in d else 'not stored (old map)')
+print('group               :', d['gen_group'] if 'gen_group' in d else 'not stored (old map)')
+print('fixed_z             :', d['fixed_z'])
+print('quality_threshold   :', d['quality_threshold'])
+print('grid shape (Nx,Ny,Nyaw,Nroll):', d['reachable'].shape)
+" $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz
+```
+
+> The maps shipped in the repository (`sim_map_right_arm.npz`, `sim_map_left_arm.npz`) were generated
+> with the parameters shown in the commands below. Run the verify command above to confirm before
+> using any map you did not generate yourself.
+
+---
 
 #### Option A: via bringup launch file (recommended)
+
+The launch file automatically selects the correct orientation for each arm.
 
 ```bash
 mkdir -p $(rospack find tiago_door_planning)/maps
 
-# Right-arm map (used for hinge-LEFT doors)
+# Right-arm map (used for hinge-LEFT doors)  ~3–4 h
 roslaunch tiago_door_bringup generate_reachability_map.launch arm:=right
 
-# Left-arm map (used for hinge-RIGHT doors)
+# Left-arm map (used for hinge-RIGHT doors)  ~3–4 h
 roslaunch tiago_door_bringup generate_reachability_map.launch arm:=left
+
+# BOTH arms sequentially in a single session — right first (~3–4 h), then left (~3–4 h)  ~6–8 h total
+roslaunch tiago_door_bringup generate_reachability_map.launch arm:=both
+
+# Both arms with a custom base name — produces my_map_right.npz and my_map_left.npz
+roslaunch tiago_door_bringup generate_reachability_map.launch \
+  arm:=both \
+  output_base:=$(rospack find tiago_door_planning)/maps/my_map
 ```
 
-Override output path if needed:
+Override output path or startup delay if Gazebo needs more time to initialise:
 
 ```bash
 roslaunch tiago_door_bringup generate_reachability_map.launch \
   arm:=right \
   output_map:=/path/to/my_right_arm_map.npz \
-  startup_delay:=40
+  startup_delay:=60
 ```
+
+---
 
 #### Option B: rosrun (MoveIt must already be running)
 
+Use this when Gazebo + MoveIt are already up and you want to skip the bringup.
+
 ```bash
-# Right arm — for hinge-LEFT doors
+# Right arm — hinge-LEFT doors
 rosrun tiago_door_planning generate_reachability_map.py \
-  --output $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
-  --frame-id base_footprint \
-  --group arm_right_torso \
-  --ee-link arm_right_7_link \
+  --output    $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
+  --frame-id  base_footprint \
+  --group     arm_right \
+  --ee-link   arm_right_7_link \
   --x-min 0.20  --x-max 1.00  --x-step 0.05 \
   --y-min -0.60 --y-max 0.60  --y-step 0.05 \
-  --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 5 \
+  --yaw-min-deg -180  --yaw-max-deg 175  --yaw-step-deg 5 \
   --fixed-z              1.05 \
   --grasp-yaw-offset-rad -1.5708 \
-  --wrist-roll-rad       -1.5708 \
+  --wrist-roll-rads      0.0,-1.5708,-3.14159 \
   --theta-step-deg       22.5 \
   --max-joint-jump-rad   1.5 \
   --n-seeds              4 \
@@ -491,43 +646,73 @@ rosrun tiago_door_planning generate_reachability_map.py \
   --quality-threshold    0.25 \
   --ik-timeout           0.05
 
-# Left arm — for hinge-RIGHT doors
+# Left arm — hinge-RIGHT doors
 rosrun tiago_door_planning generate_reachability_map.py \
-  --output $(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz \
-  --frame-id base_footprint \
-  --group arm_left_torso \
-  --ee-link arm_left_7_link \
+  --output    $(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz \
+  --frame-id  base_footprint \
+  --group     arm_left \
+  --ee-link   arm_left_7_link \
   --x-min 0.20  --x-max 1.00  --x-step 0.05 \
   --y-min -0.60 --y-max 0.60  --y-step 0.05 \
-  --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 5 \
+  --yaw-min-deg -180  --yaw-max-deg 175  --yaw-step-deg 5 \
   --fixed-z              1.05 \
   --grasp-yaw-offset-rad  0.0 \
-  --wrist-roll-rad        0.0 \
+  --wrist-roll-rads       0.0,-1.5708,-3.14159 \
+  --theta-step-deg        22.5 \
+  --max-joint-jump-rad    1.5 \
+  --n-seeds               4 \
+  --connectivity-weight   0.5 \
+  --quality-threshold     0.25 \
+  --ik-timeout            0.05
+```
+
+Grid: `17 × 25 × 72 × 3 rolls = 91 800` cells per arm. Expected runtime: **~9–12 h per arm** at `--yaw-step-deg 5` with 3 rolls (3× the single-roll time).
+
+---
+
+#### Fast map for initial testing (~45 min per arm)
+
+Reduces yaw resolution from 5° to 10° — still 2× finer than the planner's 22.5° theta bins.
+Quality is interpolated between bins at query time, so accuracy degrades only slightly.
+
+```bash
+# Right arm — fast
+rosrun tiago_door_planning generate_reachability_map.py \
+  --output    $(rospack find tiago_door_planning)/maps/sim_map_right_arm_fast.npz \
+  --frame-id  base_footprint \
+  --group     arm_right \
+  --ee-link   arm_right_7_link \
+  --x-min 0.20  --x-max 1.00  --x-step 0.05 \
+  --y-min -0.60 --y-max 0.60  --y-step 0.05 \
+  --yaw-min-deg -180  --yaw-max-deg 175  --yaw-step-deg 10 \
+  --fixed-z              1.05 \
+  --grasp-yaw-offset-rad -1.5708 \
+  --wrist-roll-rads      0.0,-1.5708,-3.14159 \
   --theta-step-deg       22.5 \
   --max-joint-jump-rad   1.5 \
-  --n-seeds              4 \
+  --n-seeds              3 \
   --connectivity-weight  0.5 \
   --quality-threshold    0.25 \
   --ik-timeout           0.05
-```
 
-Grid: `17 × 25 × 72 = 30 600` cells per arm. Expected runtime: **~3–4 h per arm** at `--yaw-step-deg 5`.
-
-#### Fast map for initial testing (~1 h per arm)
-
-```bash
+# Left arm — fast
 rosrun tiago_door_planning generate_reachability_map.py \
-  --output $(rospack find tiago_door_planning)/maps/sim_map_right_arm_fast.npz \
-  --group arm_right_torso --ee-link arm_right_7_link \
-  --frame-id base_footprint \
+  --output    $(rospack find tiago_door_planning)/maps/sim_map_left_arm_fast.npz \
+  --frame-id  base_footprint \
+  --group     arm_left \
+  --ee-link   arm_left_7_link \
   --x-min 0.20  --x-max 1.00  --x-step 0.05 \
   --y-min -0.60 --y-max 0.60  --y-step 0.05 \
-  --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 20 \
-  --fixed-z 1.05 \
-  --grasp-yaw-offset-rad -1.5708 --wrist-roll-rad -1.5708 \
-  --theta-step-deg 22.5 --max-joint-jump-rad 1.5 \
-  --n-seeds 3 --connectivity-weight 0.5 --quality-threshold 0.25 \
-  --ik-timeout 0.05
+  --yaw-min-deg -180  --yaw-max-deg 175  --yaw-step-deg 10 \
+  --fixed-z               1.05 \
+  --grasp-yaw-offset-rad   0.0 \
+  --wrist-roll-rads        0.0,-1.5708,-3.14159 \
+  --theta-step-deg         22.5 \
+  --max-joint-jump-rad     1.5 \
+  --n-seeds                3 \
+  --connectivity-weight    0.5 \
+  --quality-threshold      0.25 \
+  --ik-timeout             0.05
 ```
 
 ### Activating the maps

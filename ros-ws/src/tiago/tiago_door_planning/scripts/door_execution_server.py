@@ -45,9 +45,6 @@ class DoorExecutionServer(object):
         self._init_arm_client()
         self._init_action_server()
 
-    # ============================================================
-    # Initialization
-    # ============================================================
 
     def _load_parameters(self):
         # Frames
@@ -57,19 +54,24 @@ class DoorExecutionServer(object):
         # Control parameters
         self._control_rate = float(rospy.get_param("~control_rate", 20.0))  # Hz
         self._position_tolerance = float(rospy.get_param("~position_tolerance", 0.05))  # m
-        self._angle_tolerance = float(rospy.get_param("~angle_tolerance", 0.1))  # rad
+        self._angle_tolerance = float(rospy.get_param("~angle_tolerance", 0.175))  # rad
 
         # Velocity limits
         self._max_linear_vel = float(rospy.get_param("~max_linear_vel", 0.3))  # m/s
         self._max_angular_vel = float(rospy.get_param("~max_angular_vel", 0.6))  # rad/s
 
-        # PID gains for base tracking
-        self._kp_linear = float(rospy.get_param("~kp_linear", 1.0))
-        self._kp_angular = float(rospy.get_param("~kp_angular", 2.0))
+        # PI gains for base tracking
+        self._kp_linear = float(rospy.get_param("~kp_linear", 0.8))
+        self._kp_angular = float(rospy.get_param("~kp_angular", 0.8))
+        self._ki_linear = float(rospy.get_param("~ki_linear", 0.5))
+        self._ki_angular = float(rospy.get_param("~ki_angular", 0.5))
 
         self._max_base_lag_m = float(rospy.get_param("~max_base_lag_m", 0.15))
+        # Looser lag tolerance for the first N seconds
+        self._start_lag_tolerance_m = float(rospy.get_param("~start_lag_tolerance_m", 2.0))
+        self._start_lag_catchup_time_s = float(rospy.get_param("~start_lag_catchup_time_s", 10.0))
 
-        # External interfaces — dual-arm (Tiago++) or single-arm fallback
+        # External interfaces - dual-arm (Tiago++) or single-arm fallback
         _arm_legacy = rospy.get_param("~arm_controller", "")
         self._arm_controller_right = rospy.get_param(
             "~arm_controller_right",
@@ -149,9 +151,6 @@ class DoorExecutionServer(object):
         self._as.start()
         rospy.loginfo("Door execution server ready: %s", self._action_name)
 
-    # ============================================================
-    # Basic callbacks and helpers
-    # ============================================================
 
     def _odom_callback(self, msg):
         self._current_odom = msg
@@ -173,12 +172,14 @@ class DoorExecutionServer(object):
             return None
 
     def _approach_arm_to_start(self, arm_traj, approach_time):
-        """Move arm from current position to the first trajectory waypoint."""
+        """
+        Move arm (and torso) from current position to the first trajectory waypoint.
+        """
         if not arm_traj.points:
             return True
         current_joints = self._get_current_arm_joints(arm_traj.joint_names)
         if current_joints is None:
-            rospy.logwarn("[Execution] No joint state available — skipping arm pre-approach")
+            rospy.logwarn("[Execution] No joint state available - skipping arm pre-approach")
             return True
 
         first_pt = arm_traj.points[0]
@@ -197,13 +198,23 @@ class DoorExecutionServer(object):
         pt1.time_from_start = rospy.Duration(approach_time)
 
         approach.points = [pt0, pt1]
-        goal = FollowJointTrajectoryGoal()
-        goal.trajectory = approach
-        goal.goal_time_tolerance = rospy.Duration(5.0)
 
-        arm_client = self._select_arm_client_for_joints(arm_traj.joint_names)
-        arm_client.send_goal(goal)
-        rospy.loginfo("[Execution] Arm pre-approach: %.1fs to start configuration", approach_time)
+        arm_sub = self._split_trajectory(approach, set(approach.joint_names))
+
+        clients = []
+        if arm_sub:
+            arm_client = self._select_arm_client_for_joints(arm_sub.joint_names)
+            goal = FollowJointTrajectoryGoal()
+            goal.trajectory = arm_sub
+            goal.goal_time_tolerance = rospy.Duration(5.0)
+            arm_client.send_goal(goal)
+            clients.append(("arm", arm_client,
+                            self._arm_controller_right if arm_client is self._arm_client_right
+                            else self._arm_controller_left))
+
+        rospy.loginfo("[Execution] Arm pre-approach: %.1fs to start configuration (%s)",
+                      approach_time,
+                      ", ".join(label for label, _, _ in clients))
 
         TERMINAL = (
             actionlib.GoalStatus.SUCCEEDED,
@@ -215,18 +226,31 @@ class DoorExecutionServer(object):
         rate = rospy.Rate(10.0)
         while not rospy.is_shutdown():
             if self._is_preempt_requested():
-                arm_client.cancel_goal()
+                for _, client, _ in clients:
+                    client.cancel_goal()
                 return False
             if rospy.Time.now() > deadline:
                 rospy.logwarn("[Execution] Arm pre-approach timed out")
                 return False
-            state = arm_client.get_state()
-            if state in TERMINAL:
-                if state == actionlib.GoalStatus.SUCCEEDED:
-                    rospy.loginfo("[Execution] Arm pre-approach completed")
-                    return True
-                rospy.logwarn("[Execution] Arm pre-approach failed: state=%d", state)
-                return False
+            all_done = True
+            for label, client, ctrl_name in clients:
+                state = client.get_state()
+                if state not in TERMINAL:
+                    all_done = False
+                    continue
+                if state != actionlib.GoalStatus.SUCCEEDED:
+                    result = client.get_result()
+                    err_code = result.error_code if result else "n/a"
+                    err_str  = result.error_string if result else "no result"
+                    rospy.logerr(
+                        "[Execution] Arm pre-approach failed (%s): state=%d  error_code=%s  "
+                        "error_string='%s'  controller='%s'",
+                        label, state, err_code, err_str, ctrl_name,
+                    )
+                    return False
+            if all_done:
+                rospy.loginfo("[Execution] Arm pre-approach completed")
+                return True
             rate.sleep()
         return False
 
@@ -325,22 +349,33 @@ class DoorExecutionServer(object):
 
         return current_yaw, target_yaw, heading_error, orientation_error
 
-    def _compute_velocity_command(self, current_pose, target_pose):
+    def _compute_velocity_command(self, current_pose, target_pose, int_linear=0.0, int_angular=0.0):
         """
-        Compute cmd_vel to move from current to target pose.
-        Returns: (linear_vel, angular_vel, distance, orientation_error)
+        Compute cmd_vel to move from current to target pose (PI controller).
+        Returns: (linear_vel, angular_vel, distance, orientation_error, err_linear, err_angular)
+        err_linear and err_angular are the raw errors to accumulate for the I term.
         """
         dx, dy, distance = self._position_error(current_pose, target_pose)
         current_yaw, target_yaw, heading_error, orientation_error = self._orientation_error(
             current_pose, target_pose
         )
 
-        linear_vel = self._kp_linear * distance
-
-        if distance > self._position_tolerance * 2:
-            angular_vel = self._kp_angular * heading_error
+        if abs(heading_error) > np.pi / 2:
+            eff_angular_err = angle_wrap(heading_error - np.pi)
+            linear_vel = -(self._kp_linear * distance + self._ki_linear * int_linear)
+            if distance > self._position_tolerance * 2:
+                angular_vel = -(self._kp_angular * eff_angular_err + self._ki_angular * int_angular)
+            else:
+                eff_angular_err = orientation_error
+                angular_vel = self._kp_angular * orientation_error + self._ki_angular * int_angular
         else:
-            angular_vel = self._kp_angular * orientation_error
+            if distance > self._position_tolerance * 2:
+                eff_angular_err = heading_error
+                angular_vel = self._kp_angular * heading_error + self._ki_angular * int_angular
+            else:
+                eff_angular_err = orientation_error
+                angular_vel = self._kp_angular * orientation_error + self._ki_angular * int_angular
+            linear_vel = self._kp_linear * distance + self._ki_linear * int_linear
 
         linear_vel = np.clip(
             linear_vel, -self._max_linear_vel, self._max_linear_vel
@@ -349,7 +384,7 @@ class DoorExecutionServer(object):
             angular_vel, -self._max_angular_vel, self._max_angular_vel
         )
 
-        return linear_vel, angular_vel, distance, orientation_error
+        return linear_vel, angular_vel, distance, orientation_error, distance, eff_angular_err
 
     def _stop_base(self):
         """Stop base motion"""
@@ -365,9 +400,6 @@ class DoorExecutionServer(object):
     def _is_preempt_requested(self):
         return self._as.is_preempt_requested()
 
-    # ============================================================
-    # Goal validation / setup
-    # ============================================================
 
     def _make_result(self, success=False, message=""):
         result = ExecuteDoorOpeningResult()
@@ -539,30 +571,18 @@ class DoorExecutionServer(object):
             pt.time_from_start = rospy.Duration(all_t[j])
             sub.points.append(pt)
 
-        torso_joints = set(jn for jn in sub.joint_names if "torso" in jn)
-        arm_joints_set = set(jn for jn in sub.joint_names if jn not in torso_joints)
-
-        arm_sub = self._split_trajectory(sub, arm_joints_set)
-        torso_sub = self._split_trajectory(sub, torso_joints)
+        arm_sub = self._split_trajectory(sub, set(sub.joint_names))
 
         if arm_sub:
             goal = FollowJointTrajectoryGoal()
             goal.trajectory = arm_sub
             self._select_arm_client_for_joints(arm_sub.joint_names).send_goal(goal)
 
-        if torso_sub:
-            goal = FollowJointTrajectoryGoal()
-            goal.trajectory = torso_sub
-            self._torso_client.send_goal(goal)
-
         rospy.logdebug(
             "[ArmSync] Sent arm segment from WP %d, %d points remaining",
             from_idx, m
         )
 
-    # ============================================================
-    # Feedback
-    # ============================================================
 
     def _publish_feedback(self, stage, progress, current_waypoint, total_waypoints):
         fb = ExecuteDoorOpeningFeedback()
@@ -572,9 +592,6 @@ class DoorExecutionServer(object):
         fb.total_waypoints = total_waypoints
         self._as.publish_feedback(fb)
 
-    # ============================================================
-    # Time-synchronized execution
-    # ============================================================
 
     def _waypoint_reached(self, distance, angle_error):
         return (
@@ -666,11 +683,7 @@ class DoorExecutionServer(object):
         traj = self._resample_arm_trajectory(arm_traj, subdivisions=4)
         scaled = self._scale_arm_trajectory(traj, velocity_scaling)
 
-        torso_joints = set(jn for jn in scaled.joint_names if "torso" in jn)
-        arm_joints_set = set(jn for jn in scaled.joint_names if jn not in torso_joints)
-
-        arm_sub = self._split_trajectory(scaled, arm_joints_set)
-        torso_sub = self._split_trajectory(scaled, torso_joints)
+        arm_sub = self._split_trajectory(scaled, set(scaled.joint_names))
 
         if arm_sub:
             goal = FollowJointTrajectoryGoal()
@@ -689,19 +702,6 @@ class DoorExecutionServer(object):
                           len(arm_sub.points),
                           arm_sub.points[-1].time_from_start.to_sec() if arm_sub.points else 0.0)
 
-        if torso_sub:
-            goal = FollowJointTrajectoryGoal()
-            goal.trajectory = torso_sub
-            goal.path_tolerance = [
-                JointTolerance(name=n, position=0.3) for n in torso_sub.joint_names
-            ]
-            goal.goal_tolerance = [
-                JointTolerance(name=n, position=0.05) for n in torso_sub.joint_names
-            ]
-            goal.goal_time_tolerance = rospy.Duration(3.0)
-            self._torso_client.send_goal(goal)
-            rospy.loginfo("[Execution] Torso trajectory sent: %d points", len(torso_sub.points))
-
     def _execute_time_synchronized(self, base_path, base_times, velocity_scaling, t_start, arm_traj=None):
         """
         Time-based base execution loop.
@@ -716,6 +716,23 @@ class DoorExecutionServer(object):
             "[Execution] Base control: %d waypoints, %.2fs planned, scaling=%.2f",
             total_waypoints, base_times[-1], velocity_scaling
         )
+
+        init_pose = self._get_current_pose_map()
+        if init_pose is not None:
+            _, _, init_lag = self._position_error(init_pose, base_path.poses[0])
+            if init_lag > self._max_base_lag_m:
+                rospy.logwarn(
+                    "[Execution] Initial offset to first waypoint: %.3fm (> %.3fm limit). "
+                    "Catchup window: %.1fs with tolerance %.3fm.",
+                    init_lag, self._max_base_lag_m,
+                    self._start_lag_catchup_time_s, self._start_lag_tolerance_m,
+                )
+
+        dt = 1.0 / self._control_rate
+        int_linear = 0.0
+        int_angular = 0.0
+        max_int_linear = self._max_linear_vel / max(self._ki_linear, 1e-9)
+        max_int_angular = self._max_angular_vel / max(self._ki_angular, 1e-9)
 
         while not rospy.is_shutdown():
             if self._is_preempt_requested():
@@ -749,19 +766,24 @@ class DoorExecutionServer(object):
                 target_pose = base_path.poses[target_idx]
 
                 _, _, lag_m = self._position_error(current_pose, target_pose)
-                if lag_m > self._max_base_lag_m:
+                in_catchup = t_elapsed < self._start_lag_catchup_time_s
+                lag_limit = self._start_lag_tolerance_m if in_catchup else self._max_base_lag_m
+                if lag_m > lag_limit:
                     rospy.logerr(
-                        "[Execution] Base lag %.3fm exceeds limit %.3fm — aborting",
-                        lag_m, self._max_base_lag_m
+                        "[Execution] Base lag %.3fm exceeds limit %.3fm (catchup=%s) — aborting",
+                        lag_m, lag_limit, in_catchup
                     )
                     self._cancel_all_motion()
-                    return False, "Base lag %.2fm exceeded limit %.2fm" % (lag_m, self._max_base_lag_m)
+                    return False, "Base lag %.2fm exceeded limit %.2fm" % (lag_m, lag_limit)
 
             self._broadcast_ee_target_tf(t_unscaled, arm_traj=arm_traj)
 
-            linear_vel, angular_vel, _, _ = self._compute_velocity_command(
-                current_pose, target_pose
+            linear_vel, angular_vel, _, _, err_lin, err_ang = self._compute_velocity_command(
+                current_pose, target_pose, int_linear, int_angular
             )
+            int_linear = np.clip(int_linear + err_lin * dt, -max_int_linear, max_int_linear)
+            int_angular = np.clip(int_angular + err_ang * dt, -max_int_angular, max_int_angular)
+
             cmd = self._make_cmd_vel(linear_vel, angular_vel, velocity_scaling)
             self._cmd_vel_pub.publish(cmd)
 
@@ -773,15 +795,12 @@ class DoorExecutionServer(object):
         self._stop_base()
         return False, "ROS shutdown"
 
-    # ============================================================
-    # Arm completion
-    # ============================================================
 
     def _wait_for_arm_completion(self, arm_start_time, arm_traj=None, velocity_scaling=1.0):
         if arm_start_time is None:
             return True, ""
 
-        rospy.loginfo("Waiting for arm/torso trajectories to complete...")
+        rospy.loginfo("Waiting for arm trajectory to complete...")
 
         TERMINAL_STATES = (
             actionlib.GoalStatus.SUCCEEDED,
@@ -804,32 +823,23 @@ class DoorExecutionServer(object):
                 t_unscaled = t_elapsed * velocity_scaling
                 self._broadcast_ee_target_tf(t_unscaled, arm_traj=arm_traj)
 
-            arm_done = self._arm_client.get_state() in TERMINAL_STATES
-            torso_done = self._torso_client.get_state() in TERMINAL_STATES
-
-            if arm_done and torso_done:
+            if self._arm_client.get_state() in TERMINAL_STATES:
                 break
 
             rate.sleep()
 
         arm_state = self._arm_client.get_state()
-        torso_state = self._torso_client.get_state()
 
         rospy.loginfo(
-            "Arm/torso completed in %.2fs — arm_state=%d torso_state=%d",
-            (rospy.Time.now() - arm_start_time).to_sec(), arm_state, torso_state
+            "Arm completed in %.2fs — arm_state=%d",
+            (rospy.Time.now() - arm_start_time).to_sec(), arm_state
         )
 
         if arm_state not in (actionlib.GoalStatus.SUCCEEDED, actionlib.GoalStatus.LOST):
             return False, "arm execution failed: state={}".format(arm_state)
-        if torso_state not in (actionlib.GoalStatus.SUCCEEDED, actionlib.GoalStatus.LOST):
-            return False, "torso execution failed: state={}".format(torso_state)
 
         return True, ""
 
-    # ============================================================
-    # Action callback
-    # ============================================================
 
     def _execute_cb(self, goal):
         """Execute door opening with time-synchronized base and arm motion."""
@@ -852,7 +862,6 @@ class DoorExecutionServer(object):
 
         arm = arm_traj if self._has_arm_trajectory(arm_traj) else None
 
-        # Move arm from tuck to pre-grasp position before synchronized execution.
         if arm is not None:
             approach_time = float(rospy.get_param("~arm_approach_time", 5.0))
             if not self._approach_arm_to_start(arm, approach_time):

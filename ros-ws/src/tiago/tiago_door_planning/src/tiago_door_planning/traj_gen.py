@@ -20,11 +20,6 @@ class BaseTimingConfig(object):
         self.dt_min = dt_min
         self.dt_max = dt_max
 
-
-# ============================================================
-# Base timing
-# ============================================================
-
 def _pose_translation_distance(p0, p1):
     dx = p1.position.x - p0.position.x
     dy = p1.position.y - p0.position.y
@@ -70,11 +65,6 @@ def compute_base_timestamps(path, cfg):
 
     return ts
 
-
-# ============================================================
-# Quaternion / pose helpers
-# ============================================================
-
 def _pose_to_matrix(ps):
     q = quat_to_array(ps.pose.orientation)
     T = tft.quaternion_matrix(q)
@@ -117,10 +107,6 @@ def _make_empty_path(frame_id):
     path.poses = []
     return path
 
-
-# ============================================================
-# Handle frame propagation
-# ============================================================
 
 def _rotate_xy_about_hinge(x, y, hx, hy, delta_yaw):
     """
@@ -240,10 +226,6 @@ def build_handle_path_from_detected_frame(hinge_pose_map,
     return hp
 
 
-# ============================================================
-# Grasp target path generation
-# ============================================================
-
 def _compute_world_ee_pose_from_handle_pose(handle_pose, T_handle_ee):
     T_world_handle = _pose_to_matrix(handle_pose)
     return np.dot(T_world_handle, T_handle_ee)
@@ -292,11 +274,6 @@ def build_grasp_target_path_from_handle_path(handle_path,
 
     ee_path.poses = poses
     return ee_path
-
-
-# ============================================================
-# Approach-direction EE path
-# ============================================================
 
 def build_ee_path_from_approach_direction(base_path, handle_path, frame_id,
                                            approach_offset=0.0,
@@ -380,11 +357,6 @@ def build_ee_path_from_approach_direction(base_path, handle_path, frame_id,
     ee_path.poses = poses
     return ee_path
 
-
-# ============================================================
-# Path densification
-# ============================================================
-
 def _interp_pose(ps0, ps1, frac, frame_id):
     """Linear position + SLERP orientation between two PoseStamped at fraction frac in [0,1]."""
     ps = PoseStamped()
@@ -459,10 +431,6 @@ def densify_paths(base_path, handle_path, base_times, n_per_segment, frame_id):
     )
     return dense_base, dense_handle, dense_times_out
 
-
-# ============================================================
-# Path resampling
-# ============================================================
 
 def _resample_index_from_time(tb, total_time, pose_count):
     u = 0.0 if total_time <= 1e-9 else (tb / total_time)

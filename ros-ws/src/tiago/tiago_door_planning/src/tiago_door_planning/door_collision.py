@@ -10,10 +10,6 @@ class DoorGeom(object):
         self.open_angle_rad = open_angle_rad
 
 
-# =========================
-# --- INTERNAL HELPERS ---
-# =========================
-
 def _as_xy_array(points):
     """
     Convert sequence of 2D points to NumPy array of shape (N, 2).
@@ -73,10 +69,6 @@ def _circle_contains_any_points(cx, cy, radius, px, py):
     return bool(np.any(dx * dx + dy * dy <= rr))
 
 
-# =========================
-# --- DOOR GEOMETRY ---
-# =========================
-
 def door_polygon(hinge_xy, hinge_yaw, angle, geom, opening_sign=1.0):
     """
     Rectangle anchored at hinge, extending width along door direction.
@@ -101,10 +93,6 @@ def door_polygon(hinge_xy, hinge_yaw, angle, geom, opening_sign=1.0):
 
     return [tuple(corner) for corner in corners]
 
-
-# =========================
-# --- POLYGON TESTS ---
-# =========================
 
 def point_in_poly(pt, poly):
     """Ray-casting algorithm (checks for two crossings with horizontal ray). Returns True if point is inside polygon."""
@@ -139,10 +127,6 @@ def poly_aabb(poly):
     )
 
 
-# =========================
-# --- CIRCLE / POLYGON ---
-# =========================
-
 def _closest_points_on_polygon_edges(cx, cy, poly):
     """
     Compute closest points on each polygon edge to the circle center.
@@ -175,9 +159,6 @@ def circle_intersects_poly(cx, cy, r, poly):
     return bool(np.any(distances_sq <= r * r))
 
 
-# =========================
-# --- CIRCLE / OCCUPANCY ---
-# =========================
 
 def extract_occ_info(occ):
     """

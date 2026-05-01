@@ -240,3 +240,33 @@ export ROS_MASTER_URI=http://tiago-114c:11311
 rosnode list
 rostopic list
 ```
+
+**Chrony time server:**
+
+```bash
+# STEP 0:
+ssh root@tiago-114c
+
+# STEP 1:
+sudo apt update
+sudo apt install chrony -y
+
+# STEP 2:
+sudo nano /etc/chrony/chrony.conf
+
+# STEP 3:
+allow 10.68.0.0/24
+local stratum 10
+
+# STEP 4:
+sudo systemctl restart chrony
+sudo systemctl enable chrony
+
+# STEP 5: (Localy)
+sudo chronyc makestep
+sudo systemctl restart chrony
+
+# Verify
+chronyc sources -v
+chronyc tracking
+```

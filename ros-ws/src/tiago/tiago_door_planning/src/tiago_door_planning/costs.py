@@ -23,7 +23,8 @@ class CostConfig(object):
                  arm_centerline_penalty=0.0,
                  w_reverse_straight=5.0,
                  w_reverse_arc=2.0,
-                 w_rotation=10.0):
+                 w_rotation=10.0,
+                 w_quality=0.0):
         self.occ_threshold = occ_threshold
         self.unknown_cost = unknown_cost
         self.occ_cost = occ_cost
@@ -39,11 +40,8 @@ class CostConfig(object):
         self.w_reverse_straight = float(w_reverse_straight)
         self.w_reverse_arc = float(w_reverse_arc)
         self.w_rotation = float(w_rotation)
+        self.w_quality = float(w_quality)
 
-
-# =========================
-# --- GRID / COSTMAP ---
-# =========================
 
 def _world_to_grid(occ, x, y):
     """
@@ -104,10 +102,6 @@ def cost_costmap_pose(occ, base_pose, cfg):
     return _interpret_occ_value(v, cfg)
 
 
-# =========================
-# --- FRAME TRANSFORMS ---
-# =========================
-
 def transform_xy_to_base(base_pose_map, x_map, y_map):
     """Express a point given in map frame into base frame (2D only)."""
     yaw = yaw_from_quat(base_pose_map.pose.orientation)
@@ -119,10 +113,6 @@ def transform_xy_to_base(base_pose_map, x_map, y_map):
     s = np.sin(-yaw)
     return c * dx - s * dy, s * dx + c * dy
 
-
-# =========================
-# --- ARM COST ---
-# =========================
 
 def _compute_xy_in_base(base_pose_map, handle_pose_map):
     """Compute handle (x, y) in robot base frame."""
@@ -178,10 +168,6 @@ def arm_comfort_cost(base_pose_map, handle_pose_map, cfg):
     return soft + hard + centerline
 
 
-# =========================
-# --- ANGLE SELECTION ---
-# =========================
-
 def _compute_angle_costs(base_pose_map, hinge_pose_map, angles, handle_pose_from_angle_fn, cfg):
     """
     Compute cost for each candidate angle.
@@ -216,10 +202,6 @@ def pick_best_angle(base_pose_map, hinge_pose_map, handle_radius, hinge_yaw, ang
     return angles[best_idx], float(costs_arr[best_idx]), poses[best_idx]
 
 
-# =========================
-# --- TRANSITION COST ---
-# =========================
-
 def _compute_costmap_costs(occ, base_pose_samples, cfg):
     """
     Compute costmap costs for all samples.
@@ -227,13 +209,14 @@ def _compute_costmap_costs(occ, base_pose_samples, cfg):
     return [cost_costmap_pose(occ, bp, cfg) for bp in base_pose_samples]
 
 
-def _compute_arm_costs(base_pose_samples, lambda_angles_per_pose, hinge_pose_map, handle_pose_from_angle_fn, cfg):
+def _compute_arm_costs(base_pose_samples, lambda_angles_per_pose, hinge_pose_map, handle_pose_from_angle_fn, cfg,
+                       quality_per_angle_per_pose=None):
     """
-    Compute minimal arm cost per pose.
+    Compute minimal arm cost per pose, optionally adding a quality-based soft penalty.
     """
     arm_costs = []
 
-    for bp, angles in zip(base_pose_samples, lambda_angles_per_pose):
+    for i, (bp, angles) in enumerate(zip(base_pose_samples, lambda_angles_per_pose)):
         if not angles:
             return None
 
@@ -245,6 +228,12 @@ def _compute_arm_costs(base_pose_samples, lambda_angles_per_pose, hinge_pose_map
             )
             for a in angles
         ])
+
+        if (cfg.w_quality > 0.0 and quality_per_angle_per_pose is not None
+                and i < len(quality_per_angle_per_pose)):
+            qualities = np.asarray(quality_per_angle_per_pose[i], dtype=float)
+            if len(qualities) == len(angle_costs):
+                angle_costs = angle_costs + cfg.w_quality * (1.0 - np.clip(qualities, 0.0, 1.0))
 
         arm_costs.append(float(np.min(angle_costs)))
 
@@ -273,10 +262,10 @@ def _aggregate_transition_costs(costmap_costs, arm_costs, cfg, primitive_kind="f
 
 
 def transition_cost(occ, base_pose_samples, lambda_angles_per_pose, handle_pose_from_angle_fn,
-                    hinge_pose_map, cfg, primitive_kind="fwd"):
+                    hinge_pose_map, cfg, primitive_kind="fwd", quality_per_angle_per_pose=None):
     """
     For each pose along the action:
-        - Take min over feasible angles of arm_cost.
+        - Take min over feasible angles of arm_cost (+ optional quality penalty).
         - Then take max over poses (worst point along the action)
         - Add costmap costs along the samples.
         - Add primitive-type penalty (reverse / rotation).
@@ -291,7 +280,8 @@ def transition_cost(occ, base_pose_samples, lambda_angles_per_pose, handle_pose_
         lambda_angles_per_pose,
         hinge_pose_map,
         handle_pose_from_angle_fn,
-        cfg
+        cfg,
+        quality_per_angle_per_pose=quality_per_angle_per_pose,
     )
 
     if arm_costs is None:

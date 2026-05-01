@@ -1,4 +1,3 @@
-# Right arm — used when hinge_side == "left" (handle on the right)
 move_group_name: "arm_right"
 ee_link: "arm_right_7_link"
 gripper_controller: "hand_right_controller"
@@ -7,7 +6,6 @@ gripper_joint_names:
   - "hand_right_index_joint"
   - "hand_right_mrl_joint"
 
-# Left arm — used when hinge_side == "right" (handle on the left)
 move_group_name_left: "arm_left"
 ee_link_left: "arm_left_7_link"
 gripper_controller_left: "hand_left_controller"

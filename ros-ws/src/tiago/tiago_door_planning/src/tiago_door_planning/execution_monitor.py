@@ -30,7 +30,8 @@ class ExecutionMonitorConfig(object):
                  max_base_yaw_step_rad=0.60,
                  max_ee_step_m=0.20,
                  max_handle_step_m=0.20,
-                 arm_time_mismatch_tol=0.50):
+                 arm_time_mismatch_tol=0.50,
+                 n_per_sparse_step=1):
         self.time_monotonic_tol = float(time_monotonic_tol)
         self.angle_monotonic_tol_rad = float(angle_monotonic_tol_rad)
         self.max_base_step_m = float(max_base_step_m)
@@ -38,6 +39,7 @@ class ExecutionMonitorConfig(object):
         self.max_ee_step_m = float(max_ee_step_m)
         self.max_handle_step_m = float(max_handle_step_m)
         self.arm_time_mismatch_tol = float(arm_time_mismatch_tol)
+        self.n_per_sparse_step = max(1, int(n_per_sparse_step))
 
 
 def _validate_execution_reference_inputs(base_path, base_times, angles_rad, handle_path, ee_target_path):
@@ -232,11 +234,12 @@ def _check_handle_step(s0, s1, sample_index, monitor_cfg, report):
         report["metrics"]["max_handle_step_m"], handle_step
     )
 
-    if handle_step > monitor_cfg.max_handle_step_m:
+    threshold = monitor_cfg.max_handle_step_m * monitor_cfg.n_per_sparse_step
+    if handle_step > threshold:
         _append_warning(
             report,
             "Large handle step at sample %d: %.3f m > %.3f m" %
-            (sample_index, handle_step, monitor_cfg.max_handle_step_m)
+            (sample_index, handle_step, threshold)
         )
 
 
@@ -252,11 +255,12 @@ def _check_ee_target_step(s0, s1, sample_index, monitor_cfg, report):
         report["metrics"]["max_ee_step_m"], ee_step
     )
 
-    if ee_step > monitor_cfg.max_ee_step_m:
+    threshold = monitor_cfg.max_ee_step_m * monitor_cfg.n_per_sparse_step
+    if ee_step > threshold:
         _append_warning(
             report,
             "Large EE target step at sample %d: %.3f m > %.3f m" %
-            (sample_index, ee_step, monitor_cfg.max_ee_step_m)
+            (sample_index, ee_step, threshold)
         )
 
 

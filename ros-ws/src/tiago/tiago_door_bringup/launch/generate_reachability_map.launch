@@ -1,77 +1,88 @@
 <?xml version="1.0"?>
 <launch>
-  <!--
-    Generate an offline arm-reachability quality map for the TIAGo++ door planner.
+  <!-- arm selection -->
+  <!-- right | left | both -->
+  <arg name="arm" default="right"
+       doc="Arm to generate: 'right', 'left', or 'both' (right then left sequentially)"/>
 
-    For dual-arm Tiago++ you must generate TWO maps — one per arm:
+  <!-- single-arm options -->
+  <arg name="group"   default="arm_$(arg arm)"
+       doc="MoveIt planning group (single-arm mode only)"/>
+  <arg name="ee_link" default="arm_$(arg arm)_7_link"
+       doc="End-effector link name (single-arm mode only)"/>
 
-      # Right arm (used when door hinge is on the LEFT):
-      roslaunch tiago_door_bringup generate_reachability_map.launch arm:=right
-
-      # Left arm (used when door hinge is on the RIGHT):
-      roslaunch tiago_door_bringup generate_reachability_map.launch arm:=left
-
-    For single-arm Tiago:
-      roslaunch tiago_door_bringup generate_reachability_map.launch \
-        arm:=right group:=arm_torso ee_link:=arm_7_link \
-        output_map:=$(rospack find tiago_door_planning)/maps/sim_map.npz
-  -->
-
-  <!-- Which arm to generate the map for: "right" or "left" -->
-  <arg name="arm"    default="right" doc="Arm to generate map for: right or left"/>
-
-  <!-- MoveIt group and end-effector link — auto-filled from arm arg for Tiago++ -->
-  <arg name="group"   default="arm_$(arg arm)_torso"/>
-  <arg name="ee_link" default="arm_$(arg arm)_7_link"/>
-
-  <!-- Output path — one file per arm -->
   <arg name="output_map"
-       default="$(find tiago_door_planning)/maps/sim_map_$(arg arm)_arm.npz"/>
+       default="$(find tiago_door_planning)/maps/sim_map_$(arg arm)_arm.npz"
+       doc="Output .npz path (single-arm mode). Ignored when arm:=both."/>
 
-  <!-- Simulation + MoveIt bringup (no nav / perception / BT) -->
-  <arg name="robot"         default="tiago++"/>
+  <arg name="grasp_yaw_offset_rad"
+       default="$(eval '-1.5708' if arg('arm') == 'right' else '0.0')"
+       doc="Grasp yaw offset (rad) — must match planner/grasp_yaw_offset_rad_{arm}_arm in planner.yaml"/>
+  <arg name="wrist_roll_rads"
+       default="0.0,-1.5708,-3.14159"
+       doc="Comma-separated wrist roll values (rad) — one map slice per roll. Select at runtime via planner/reachability_wrist_roll_rad in planner.yaml"/>
+
+  <arg name="output_base"
+       default="$(find tiago_door_planning)/maps/sim_map"
+       doc="Base output path for both-arms mode (_right.npz and _left.npz are appended). Ignored when arm:=right or arm:=left."/>
+
+  <!-- simulation bringup (shared by all modes) -->
+  <arg name="robot" default="tiago++"/>
   <arg name="world_file"
        default="$(find tiago_door_sim)/worlds/small_office_with_door.world"/>
   <arg name="startup_delay" default="30"
-       doc="Seconds to wait for Gazebo + MoveIt to be ready before starting generation"/>
+       doc="Seconds to wait for Gazebo + MoveIt to be fully ready before generation starts. Increase to 60 on slow machines."/>
 
   <include file="$(find tiago_door_bringup)/launch/main.launch">
-    <arg name="simulation"           value="true"/>
-    <arg name="robot"                value="$(arg robot)"/>
-    <arg name="world_file"           value="$(arg world_file)"/>
-    <arg name="gui"                  value="false"/>
-    <arg name="use_slam"             value="false"/>
-    <arg name="use_door_perception"  value="false"/>
-    <arg name="use_navigation"       value="false"/>
+    <arg name="simulation" value="true"/>
+    <arg name="robot" value="$(arg robot)"/>
+    <arg name="world_file" value="$(arg world_file)"/>
+    <arg name="gui" value="false"/>
+    <arg name="use_slam" value="false"/>
+    <arg name="use_door_perception" value="false"/>
+    <arg name="use_navigation" value="false"/>
     <arg name="use_arm_manipulation" value="false"/>
-    <arg name="use_behavior_tree"    value="false"/>
-    <arg name="use_vicon"            value="false"/>
-    <arg name="rviz"                 value="false"/>
+    <arg name="use_behavior_tree" value="false"/>
+    <arg name="use_vicon" value="false"/>
+    <arg name="rviz" value="false"/>
   </include>
 
-  <node pkg="tiago_door_planning"
-        type="generate_reachability_map.py"
-        name="generate_reachability_map"
-        output="screen"
-        required="true"
-        launch-prefix="bash -c 'sleep $(arg startup_delay) &amp;&amp; $0 &quot;$@&quot;'"
-        args="
-          --output        $(arg output_map)
-          --frame-id      base_footprint
-          --group         $(arg group)
-          --ee-link       $(arg ee_link)
-          --x-min  0.20   --x-max  1.00  --x-step 0.05
-          --y-min -0.60   --y-max  0.60  --y-step 0.05
-          --yaw-min-deg -180  --yaw-max-deg 175  --yaw-step-deg 5
-          --fixed-z              1.05
-          --grasp-yaw-offset-rad -1.5708
-          --wrist-roll-rad       -1.5708
-          --theta-step-deg       22.5
-          --max-joint-jump-rad   1.5
-          --n-seeds              4
-          --connectivity-weight  0.5
-          --quality-threshold    0.25
-          --ik-timeout           0.05
-        "/>
+  <!-- single-arm mode -->
+  <group unless="$(eval arg('arm') == 'both')">
+    <node pkg="tiago_door_planning"
+          type="generate_reachability_map.py"
+          name="generate_reachability_map"
+          output="screen"
+          required="true"
+          launch-prefix="bash -c 'sleep $(arg startup_delay) &amp;&amp; $0 &quot;$@&quot;'"
+          args="
+            --output $(arg output_map)
+            --frame-id base_footprint
+            --group $(arg group)
+            --ee-link $(arg ee_link)
+            --x-min 0.20 --x-max  1.00 --x-step 0.05
+            --y-min -0.60 --y-max 0.60 --y-step 0.05
+            --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 5
+            --fixed-z 1.05
+            --grasp-yaw-offset-rad $(arg grasp_yaw_offset_rad)
+            --wrist-roll-rads $(arg wrist_roll_rads)
+            --theta-step-deg 22.5
+            --max-joint-jump-rad 1.5
+            --n-seeds 4
+            --connectivity-weight 0.5
+            --quality-threshold 0.25
+            --ik-timeout 0.05
+          "/>
+  </group>
+
+  <group if="$(eval arg('arm') == 'both')">
+    <node pkg="tiago_door_planning"
+          type="generate_reachability_map.py"
+          name="generate_reachability_map_both"
+          output="screen"
+          required="true"
+          launch-prefix="/bin/bash -c 'sleep $(arg startup_delay) &amp;&amp; echo --- [1/2] RIGHT arm map: $(arg output_base)_right.npz --- &amp;&amp; $(find tiago_door_planning)/scripts/generate_reachability_map.py --output $(arg output_base)_right.npz --frame-id base_footprint --group arm_right --ee-link arm_right_7_link --x-min 0.20 --x-max 1.00 --x-step 0.05 --y-min -0.60 --y-max 0.60 --y-step 0.05 --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 5 --fixed-z 1.05 --grasp-yaw-offset-rad -1.5708 --wrist-roll-rads 0.0,-1.5708,-3.14159 --theta-step-deg 22.5 --max-joint-jump-rad 1.5 --n-seeds 4 --connectivity-weight 0.5 --quality-threshold 0.25 --ik-timeout 0.05 &amp;&amp; echo --- [2/2] LEFT arm map: $(arg output_base)_left.npz --- &amp;&amp; $(find tiago_door_planning)/scripts/generate_reachability_map.py --output $(arg output_base)_left.npz --frame-id base_footprint --group arm_left --ee-link arm_left_7_link --x-min 0.20 --x-max 1.00 --x-step 0.05 --y-min -0.60 --y-max 0.60 --y-step 0.05 --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 5 --fixed-z 1.05 --grasp-yaw-offset-rad 0.0 --wrist-roll-rads 0.0,-1.5708,-3.14159 --theta-step-deg 22.5 --max-joint-jump-rad 1.5 --n-seeds 4 --connectivity-weight 0.5 --quality-threshold 0.25 --ik-timeout 0.05 &amp;&amp; echo --- Both maps complete ---' --"
+          args=""/>
+  </group>
 
 </launch>
