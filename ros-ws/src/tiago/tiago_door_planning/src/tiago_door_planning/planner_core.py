@@ -86,6 +86,7 @@ class PlannerCore(object):
                 use_grasp_yaw=cfg.use_grasp_yaw,
                 grasp_yaw_offset_rad=cfg.grasp_yaw_offset_rad,
                 reachability_wrist_roll_rad=getattr(cfg, 'reachability_wrist_roll_rad', None),
+                reachability_wrist_pitch_rad=getattr(cfg, 'grasp_pitch_rad', 0.0),
             )
         )
 
@@ -147,9 +148,6 @@ class PlannerCore(object):
 
     def _make_lambda_for_pose_xyyaw(self, hx, hy, hinge_yaw, handle_radius, opening_sign,
                                     push_motion=True):
-        # Robot approaches from the handle side for both push and pull; grasp orientation is the same.
-        grasp_yaw_extra_offset = 0.0
-
         lambda_state_cache = {}
 
         def lambda_for_pose_xyyaw(x, y, yaw):
@@ -162,7 +160,6 @@ class PlannerCore(object):
                 int(round(float(hinge_yaw) * 1000.0)),
                 int(round(float(handle_radius) * 1000.0)),
                 int(round(float(opening_sign) * 10.0)),
-                int(round(float(grasp_yaw_extra_offset) * 100.0)),
             )
             if key in lambda_state_cache:
                 return lambda_state_cache[key]
@@ -177,7 +174,6 @@ class PlannerCore(object):
                 occ_grid=self._occ,
                 occ_thresh=self._occ_thresh,
                 opening_sign=opening_sign,
-                grasp_yaw_extra_offset=grasp_yaw_extra_offset,
             )
             lambda_state_cache[key] = lam
             return lam
@@ -192,13 +188,25 @@ class PlannerCore(object):
             len(start_lam.angles0), len(start_lam.angles1),
             sum(start_lam.feasible_mask), len(start_lam.feasible_mask),
         )
-        if start_lam.angles0:
-            start_d = 0
-        else:
+
+        if not start_lam.angles0 and not start_lam.angles1:
             rospy.logerr(
-                "[Planner] Start pose has no feasible interval-0 angles. Cannot start closed-door opening plan."
+                "[Planner] Start pose has no feasible door angles in either interval "
+                "(reachable=%d/%d). Robot cannot reach the handle from this position.",
+                sum(start_lam.feasible_mask), len(start_lam.feasible_mask),
             )
-            raise RuntimeError("Start pose has no feasible interval-0 angles.")
+            raise RuntimeError("Start pose has no feasible door angles.")
+
+        if not start_lam.angles0:
+            rospy.logwarn(
+                "[Planner] Start pose has no near-closed angles (angles0 empty). "
+                "Starting in interval 1 (angles1 min=%.1f deg). "
+                "Door may need to be partially open already.",
+                np.degrees(float(min(start_lam.angles1))),
+            )
+            start_d = 1
+        else:
+            start_d = 0
 
         start_s = pose_to_state(start_p, d=start_d, cfg=self._lat_cfg)
         return start_lam, start_d, start_s
@@ -236,14 +244,17 @@ class PlannerCore(object):
         return is_goal
 
     def _make_heuristic(self, lambda_for_state, goal_angle):
+        scale = self.cfg.cost.w_dist * self.cfg.reach_min
+
         def h(s):
             lam = lambda_for_state(s)
             angles = interval_angles(lam, s.d)
             if not angles:
                 return 1e6
             angles_arr = np.array(angles)
-            best_gap = np.min(np.abs(angles_arr - goal_angle))
-            return float(best_gap)
+            best_gap = float(np.min(np.abs(angles_arr - goal_angle)))
+            return scale * best_gap
+
         return h
 
     def _should_log_detail(self, tr):
@@ -271,13 +282,14 @@ class PlannerCore(object):
             ns_switch = pose_to_state(p0, d=(1 - s.d), cfg=self._lat_cfg)
             switch_cost = 1e-3
             out.append((ns_switch, switch_cost))
-            rospy.loginfo(
-                "[Planner] INTERVAL SWITCH d=%d -> d=%d at (ix=%d,iy=%d,itheta=%d): "
-                "angles0=[%.1f,%.1f]deg angles1=[%.1f,%.1f]deg",
-                s.d, 1 - s.d, s.ix, s.iy, s.itheta,
-                np.degrees(min(lam0.angles0)), np.degrees(max(lam0.angles0)),
-                np.degrees(min(lam0.angles1)), np.degrees(max(lam0.angles1)),
-            )
+            if log_detail:
+                rospy.loginfo(
+                    "[Planner] INTERVAL SWITCH d=%d -> d=%d at (ix=%d,iy=%d,itheta=%d): "
+                    "angles0=[%.1f,%.1f]deg angles1=[%.1f,%.1f]deg",
+                    s.d, 1 - s.d, s.ix, s.iy, s.itheta,
+                    np.degrees(min(lam0.angles0)), np.degrees(max(lam0.angles0)),
+                    np.degrees(min(lam0.angles1)), np.degrees(max(lam0.angles1)),
+                )
         else:
             rejected_stats['switch_unavailable'] += 1
 
@@ -324,8 +336,11 @@ class PlannerCore(object):
 
         return True, surviving_angles, None
 
+    _TRANSLATION_KINDS = frozenset(("fwd", "rev", "arcL", "arcR", "arcRevL", "arcRevR"))
+
     def _compute_step_cost(self, base_samples_ps, angles_per_pose, handle_pose_from_angle,
                            hinge_pose_map, primitive_kind="fwd", quality_per_angle_per_pose=None):
+        step_length = self.cfg.step_m if primitive_kind in self._TRANSLATION_KINDS else 0.0
         return transition_cost(
             occ=self._occ,
             base_pose_samples=base_samples_ps,
@@ -335,6 +350,7 @@ class PlannerCore(object):
             cfg=self.cfg.cost,
             primitive_kind=primitive_kind,
             quality_per_angle_per_pose=quality_per_angle_per_pose,
+            step_length=step_length,
         )
 
     def _append_motion_successor(self, samples, interval_d, out, step_cost, tr):
@@ -407,7 +423,7 @@ class PlannerCore(object):
 
         return succ, tr
 
-    def _run_search(self, start_s, is_goal, succ, h, time_budget_s):
+    def _run_search(self, start_s, is_goal, succ, h, time_budget_s, search_trace_out=None):
         time_limit = max(0.2, time_budget_s)
 
         if self.cfg.use_eps_schedule:
@@ -428,6 +444,7 @@ class PlannerCore(object):
                 eps_end=self.cfg.eps_end,
                 eps_step=self.cfg.eps_step,
                 total_time_s=time_limit,
+                _trace_list=search_trace_out,
             )
 
         rospy.loginfo(
@@ -435,14 +452,19 @@ class PlannerCore(object):
             self.cfg.w_astar,
             time_limit,
         )
-        return weighted_astar(
+        iter_trace = {} if search_trace_out is not None else None
+        result = weighted_astar(
             start=start_s,
             is_goal=is_goal,
             succ=succ,
             heuristic=h,
             w=self.cfg.w_astar,
             time_limit_s=time_limit,
+            _trace=iter_trace,
         )
+        if search_trace_out is not None and iter_trace:
+            search_trace_out.append(iter_trace)
+        return result
 
     def _build_output_path_and_angles(self, r, lambda_for_state, lambda_for_pose_xyyaw,
                                       handle_pose_from_angle, hinge_pose_map,
@@ -461,6 +483,17 @@ class PlannerCore(object):
             a0 = interval_angles(lam0, st0.d)
             if a0:
                 prev_angle = float(min(a0))
+
+        _path_lambdas = [interval_angles(lambda_for_state(st), st.d) for st in r.path]
+        _tol = self.cfg.monotonic_angle_tol_rad
+        n_path = len(r.path)
+        _max_sustainable = [0.0] * n_path
+        if n_path > 0:
+            _max_sustainable[-1] = float(max(_path_lambdas[-1])) if _path_lambdas[-1] else 0.0
+            for _i in range(n_path - 2, -1, -1):
+                _ceiling = _max_sustainable[_i + 1]
+                _reachable = [a for a in _path_lambdas[_i] if a <= _ceiling + _tol]
+                _max_sustainable[_i] = float(max(_reachable)) if _reachable else 0.0
 
         for i, st in enumerate(r.path):
             p = state_to_pose(st, self._lat_cfg)
@@ -491,24 +524,14 @@ class PlannerCore(object):
             )
 
             if best_a is None:
-                above = sorted([
-                    float(a) for a in angles
-                    if float(a) >= float(prev_angle) - self.cfg.monotonic_angle_tol_rad
-                ])
-                if above:
-                    chosen = above[0]
-                    rospy.logwarn(
-                        "[Planner] Monotonic picker fallback at path index %d: using smallest above-prev angle %.3f rad",
-                        i, chosen
-                    )
-                else:
-                    chosen = float(prev_angle)
-                    rospy.logwarn(
-                        "[Planner] Monotonic picker failed at path index %d: reusing previous angle %.3f rad",
-                        i, chosen
-                    )
+                chosen = float(prev_angle)
+                rospy.logwarn(
+                    "[Planner] Monotonic picker failed at path index %d: reusing previous angle %.3f rad",
+                    i, chosen
+                )
             else:
-                chosen = float(best_a)
+                sustainable = [a for a in filtered if a <= _max_sustainable[i] + _tol]
+                chosen = float(max(sustainable)) if sustainable else float(max(filtered))
 
             if chosen + self.cfg.monotonic_angle_tol_rad < prev_angle:
                 rospy.logwarn(
@@ -535,11 +558,18 @@ class PlannerCore(object):
         return base_path, angles_out
 
     def plan(self, base_start, hinge_pose_map, handle_pose_map,
-             goal_open_angle_rad, push_motion, hinge_side, time_budget_s):
+             goal_open_angle_rad, push_motion, hinge_side, time_budget_s,
+             capture_trace=False):
         """
         Computes a base path + per-waypoint door angle sequence.
+        Pass capture_trace=True to record search exploration data in PlanOutput.search_trace.
         """
         plan_t0 = time_module.time()
+        active_grasp_yaw = (
+            self.cfg.grasp_yaw_offset_rad if push_motion
+            else self.cfg.pull_grasp_yaw_offset_rad
+        )
+        self._lambda.cfg.grasp_yaw_offset_rad = active_grasp_yaw
         self._lambda._cache.clear()
         self._lambda.reset_stats()
 
@@ -584,7 +614,9 @@ class PlannerCore(object):
             hinge_pose_map
         )
 
-        r = self._run_search(start_s, is_goal, succ, h, time_budget_s)
+        search_trace_out = [] if capture_trace else None
+        r = self._run_search(start_s, is_goal, succ, h, time_budget_s,
+                             search_trace_out=search_trace_out)
 
         plan_elapsed = time_module.time() - plan_t0
         log_search_summary(r, tr, lambda_state_cache, plan_elapsed,
@@ -603,8 +635,19 @@ class PlannerCore(object):
             hinge_yaw
         )
 
+        if angles_out and angles_out[-1] < goal_angle - goal_tol:
+            rospy.logwarn(
+                "[Planner] Achieved door angle %.1f deg is below goal %.1f deg "
+                "(tolerance %.1f deg). Reachability map coverage likely insufficient "
+                "for this door configuration.",
+                np.degrees(angles_out[-1]),
+                np.degrees(goal_angle),
+                np.degrees(goal_tol),
+            )
+
         return PlanOutput(
             base_path=base_path,
             angles_rad=angles_out,
-            expanded_states=r.expands
+            expanded_states=r.expands,
+            search_trace=search_trace_out,
         )

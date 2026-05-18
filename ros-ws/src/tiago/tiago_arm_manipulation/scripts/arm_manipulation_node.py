@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import math
+import numpy as np
 import rospy
 
 from geometry_msgs.msg import PoseStamped, Quaternion
@@ -17,6 +18,7 @@ from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryG
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 import moveit_commander
+from moveit_msgs.msg import Constraints, JointConstraint
 
 from tiago_arm_manipulation.srv import MoveToPose, MoveToPoseResponse
 from tiago_arm_manipulation.srv import MoveToNamed, MoveToNamedResponse
@@ -65,9 +67,24 @@ class TiagoArmManipulationNode(object):
         self.default_vel     = rospy.get_param("~velocity_scaling", 0.2)
         self.default_acc     = rospy.get_param("~acceleration_scaling", 0.2)
 
-        self.default_approach = rospy.get_param("~approach_distance", 0.12)
+        self.default_approach = rospy.get_param("~approach_distance", 0.0)
         self.default_lat      = rospy.get_param("~lateral_offset", 0.0)
         self.default_vert     = rospy.get_param("~vertical_offset", 0.0)
+
+        # Safe approach waypoint before final pregrasp
+        self.pregrasp_standoff_m = float(rospy.get_param("~pregrasp_standoff_m", 0.10))
+        self.pregrasp_z_offset_m = float(rospy.get_param("~pregrasp_z_offset_m", 0.10))
+
+        # Joint constraints applied during pregrasp MoveIt planning
+        self.pregrasp_joint_constraints = list(rospy.get_param("~pregrasp_joint_constraints", []))
+
+        # Grasp transform
+        self.grasp_offset_x  = float(rospy.get_param("~grasp_offset_x",  0.0))
+        self.grasp_offset_y  = float(rospy.get_param("~grasp_offset_y",  0.0))
+        self.grasp_offset_z  = float(rospy.get_param("~grasp_offset_z",  0.0))
+        self.grasp_roll_rad  = float(rospy.get_param("~grasp_roll_rad",  1.5708))
+        self.grasp_pitch_rad = float(rospy.get_param("~grasp_pitch_rad", 1.5708))
+        self.grasp_yaw_rad   = float(rospy.get_param("~grasp_yaw_rad",  -1.5708))
 
         self.named_home = rospy.get_param("~named_home", "home")
         self.named_stow = rospy.get_param("~named_stow", "stow")
@@ -129,11 +146,11 @@ class TiagoArmManipulationNode(object):
         )
 
         self._gripper_joints_right = list(gripper_joints_right)
-        self._gripper_joints_left  = list(gripper_joints_left)
+        self._gripper_joints_left = list(gripper_joints_left)
 
         self._gripper_client_right = self._make_gripper_client(gripper_ctrl_right)
-        self._gripper_client_left  = self._make_gripper_client(gripper_ctrl_left)
-        self.gripper_client        = self._gripper_client_right  # matches active arm
+        self._gripper_client_left = self._make_gripper_client(gripper_ctrl_left)
+        self.gripper_client = self._gripper_client_right # matches active arm
 
         self.last_handle  = None
         rospy.Subscriber(self.handle_topic, PoseStamped, self._on_handle, queue_size=1)
@@ -274,23 +291,55 @@ class TiagoArmManipulationNode(object):
         return TriggerResponse(success=resp.ok, message=resp.message)
 
     def _compute_pregrasp_from_handle(self, handle_base, approach_distance, lateral_offset, vertical_offset):
-        hx  = handle_base.pose.position.x
-        hy  = handle_base.pose.position.y
-        hz  = handle_base.pose.position.z
-        yaw = math.atan2(hy, hx)
+        # Build T_world_handle from the handle pose (full 6-DOF from localization)
+        o = handle_base.pose.orientation
+        T_world_handle = tft.quaternion_matrix([o.x, o.y, o.z, o.w])
+        T_world_handle[0, 3] = handle_base.pose.position.x
+        T_world_handle[1, 3] = handle_base.pose.position.y
+        T_world_handle[2, 3] = handle_base.pose.position.z
+
+        # Build T_handle_ee using the same grasp transform as the planner (WP0)
+        T_handle_ee = tft.euler_matrix(self.grasp_roll_rad, self.grasp_pitch_rad, self.grasp_yaw_rad)
+        T_handle_ee[0, 3] = self.grasp_offset_x
+        T_handle_ee[1, 3] = self.grasp_offset_y
+        T_handle_ee[2, 3] = self.grasp_offset_z
+
+        T_world_ee = np.dot(T_world_handle, T_handle_ee)
 
         tgt = PoseStamped()
         tgt.header.stamp    = rospy.Time.now()
         tgt.header.frame_id = self.planning_frame
-
-        dx = math.cos(yaw)
-        dy = math.sin(yaw)
-
-        tgt.pose.position.x   = hx - approach_distance * dx
-        tgt.pose.position.y   = hy - approach_distance * dy + lateral_offset
-        tgt.pose.position.z   = hz + vertical_offset
-        tgt.pose.orientation  = quat_for_handle_grasp(yaw)
+        tgt.pose.position.x = float(T_world_ee[0, 3])
+        tgt.pose.position.y = float(T_world_ee[1, 3])
+        tgt.pose.position.z = float(T_world_ee[2, 3])
+        q = tft.quaternion_from_matrix(T_world_ee)
+        tgt.pose.orientation.x = float(q[0])
+        tgt.pose.orientation.y = float(q[1])
+        tgt.pose.orientation.z = float(q[2])
+        tgt.pose.orientation.w = float(q[3])
         return tgt
+
+    def _compute_approach_waypoint(self, final_target, handle_base):
+        """
+        Intermediate waypoint before the final pregrasp: same orientation, but
+        pulled back toward the robot along the door normal and raised in Z.
+        This lets the arm approach from above-behind, avoiding the handle from below.
+        """
+        o = handle_base.pose.orientation
+        T_world_handle = tft.quaternion_matrix([o.x, o.y, o.z, o.w])
+        normal = T_world_handle[0:3, 2]
+        norm = np.linalg.norm(normal)
+        if norm > 1e-9:
+            normal = normal / norm
+
+        wp = PoseStamped()
+        wp.header.stamp    = rospy.Time.now()
+        wp.header.frame_id = final_target.header.frame_id
+        wp.pose.orientation = final_target.pose.orientation
+        wp.pose.position.x = final_target.pose.position.x + self.pregrasp_standoff_m * normal[0]
+        wp.pose.position.y = final_target.pose.position.y + self.pregrasp_standoff_m * normal[1]
+        wp.pose.position.z = final_target.pose.position.z + self.pregrasp_standoff_m * normal[2] + self.pregrasp_z_offset_m
+        return wp
 
     def _srv_door_pregrasp(self, req):
         try:
@@ -315,9 +364,35 @@ class TiagoArmManipulationNode(object):
             target      = self._compute_pregrasp_from_handle(handle_base, approach, lat, vert)
 
             self._configure_group(self.default_pos_tol, self.default_ori_tol, vel, acc)
-            self.group.set_pose_target(target)
 
-            ok, msg = self._plan_and_maybe_execute(req.execute)
+            # Apply joint constraints if configured
+            if self.pregrasp_joint_constraints:
+                c = Constraints()
+                for jc_cfg in self.pregrasp_joint_constraints:
+                    jc = JointConstraint()
+                    jc.joint_name      = str(jc_cfg["joint"])
+                    jc.position        = float(jc_cfg.get("position", 0.0))
+                    jc.tolerance_above = float(jc_cfg.get("tolerance_above", 0.5))
+                    jc.tolerance_below = float(jc_cfg.get("tolerance_below", 0.5))
+                    jc.weight          = float(jc_cfg.get("weight", 1.0))
+                    c.joint_constraints.append(jc)
+                self.group.set_path_constraints(c)
+
+            try:
+                if req.execute:
+                    # Step 1: move to safe approach waypoint (back + up from handle)
+                    approach_wp = self._compute_approach_waypoint(target, handle_base)
+                    self.group.set_pose_target(approach_wp)
+                    ok, msg = self._plan_and_maybe_execute(execute=True)
+                    if not ok:
+                        return DoorPregraspResponse(ok=False, message="Approach waypoint failed: " + msg, planned_target_base=target)
+
+                # Step 2: move to final pregrasp target
+                self.group.set_pose_target(target)
+                ok, msg = self._plan_and_maybe_execute(req.execute)
+            finally:
+                self.group.clear_path_constraints()
+
             return DoorPregraspResponse(ok=ok, message=msg, planned_target_base=target)
         except Exception as e:
             return DoorPregraspResponse(ok=False, message=str(e), planned_target_base=PoseStamped())

@@ -22,13 +22,6 @@ from bt_nodes import (
 )
 
 def make_tree(params):
-    # Phase 0: Switch RTAB-Map to localization mode
-    rtabmap_localization = CallEmptyServiceOnce(
-        "RTABMapLocalizationMode",
-        "/set_mode_localization",
-        timeout_s=2.0
-    )
-    
     # Phase 1: Door model ready (plane pose + handle pose + push/pull interaction)
     wait_plane = WaitForPose("WaitForPlanePose", params["plane_topic"], params["pose_max_age_s"])
     wait_interaction = WaitForInteraction(
@@ -112,7 +105,7 @@ def make_tree(params):
         "MoveToPregrasp",
         service_name="/tiago_arm_manipulation/door_pregrasp",
         execute=True,
-        approach_distance=0.12,
+        approach_distance=0.0,
         timeout_s=30.0
     )
     
@@ -199,19 +192,11 @@ def make_tree(params):
         children=[disable_mask, clear_costmaps_2],
     )
 
-    # Phase 8: Switch RTAB-Map back to SLAM mode (resume mapping)
-    rtabmap_slam = CallEmptyServiceOnce(
-        "RTABMapSLAMMode",
-        "/set_mode_mapping",
-        timeout_s=2.0
-    )
-
     # Root mission sequence
     root = py_trees.composites.Sequence(
         name="DoorMission",
         memory=True,
         children=[
-            rtabmap_localization,
             door_model_ready,
             nav_retry,
             prep_door,
@@ -221,7 +206,6 @@ def make_tree(params):
             go_through,
             observe_mask,
             restore,
-            rtabmap_slam,
         ],
     )
 

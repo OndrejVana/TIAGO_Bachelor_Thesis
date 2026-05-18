@@ -9,8 +9,8 @@
 
   <arg name="door_config" default="$(find tiago_door_localization)/config/apriltag_two_sided_door.yaml"/>
 
-  <arg name="reachability_map_right_arm" default="$(find tiago_door_planning)/maps/sim_map_right_arm.npz"/>
-  <arg name="reachability_map_left_arm"  default="$(find tiago_door_planning)/maps/sim_map_left_arm.npz"/>
+  <arg name="reachability_map_right_arm" default="$(find tiago_door_planning)/maps/reachability_map_4D_new_right.npz"/>
+  <arg name="reachability_map_left_arm"  default="$(find tiago_door_planning)/maps/reachability_map_4D_new_left.npz"/>
 
   <param name="/use_sim_time" value="true"/>
 

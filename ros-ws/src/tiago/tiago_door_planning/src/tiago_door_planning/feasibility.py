@@ -38,7 +38,8 @@ class FeasConfig(object):
                  reachability_y_exclusion_half_width_m=0.0,
                  use_grasp_yaw=True,
                  grasp_yaw_offset_rad=0.0,
-                 reachability_wrist_roll_rad=None):
+                 reachability_wrist_roll_rad=None,
+                 reachability_wrist_pitch_rad=None):
         self.angle_step_deg = angle_step_deg
         self.open_angle_rad = open_angle_rad
         self.robot_radius = robot_radius
@@ -62,6 +63,9 @@ class FeasConfig(object):
         self.grasp_yaw_offset_rad = float(grasp_yaw_offset_rad)
         self.reachability_wrist_roll_rad = (
             float(reachability_wrist_roll_rad) if reachability_wrist_roll_rad is not None else None
+        )
+        self.reachability_wrist_pitch_rad = (
+            float(reachability_wrist_pitch_rad) if reachability_wrist_pitch_rad is not None else None
         )
 
 
@@ -106,7 +110,7 @@ class LambdaComputer(object):
         return out
 
     def _make_cache_key(self, base_xy, base_yaw, hinge_xy, hinge_yaw,
-                        handle_radius, opening_sign, grasp_yaw_extra_offset):
+                        handle_radius, opening_sign):
         """
         Build cache key from quantized geometric inputs.
         """
@@ -119,7 +123,6 @@ class LambdaComputer(object):
             int(round(hinge_yaw * 100.0)),
             int(round(handle_radius * 100.0)),
             int(round(float(opening_sign) * 10.0)),
-            int(round(float(grasp_yaw_extra_offset) * 100.0)),
         )
 
     def _sample_angles_rad(self):
@@ -157,49 +160,40 @@ class LambdaComputer(object):
         )
         return door_yaws, handle_positions
 
-    def _compute_reachable_mask(self, base_xy, base_yaw, door_yaws, handle_positions,
-                                grasp_yaw_extra_offset=0.0):
+    def _compute_reachable_mask(self, base_xy, base_yaw, door_yaws, handle_positions):
         """
         Evaluate reachability backend for all sampled handle poses.
-        grasp_yaw_extra_offset is added to grasp_yaw only (not handle positions).
-        Pass np.pi for pull doors so the robot faces the handle from the correct side.
         Returns (reachable, quality_by_angle) where quality_by_angle maps angle to score.
         """
-        n = len(door_yaws)
-        reachable = np.zeros(n, dtype=bool)
-        quality_by_angle = {}
         roll_rad = getattr(self.cfg, 'reachability_wrist_roll_rad', None)
+        pitch_rad = getattr(self.cfg, 'reachability_wrist_pitch_rad', None)
 
-        for i in range(n):
-            handle_xyz = [
-                float(handle_positions[i, 0]),
-                float(handle_positions[i, 1]),
-                float(self.cfg.handle_height),
-            ]
+        reachable = self._reachability.batch_is_reachable(
+            base_xy=base_xy,
+            base_yaw=base_yaw,
+            handle_positions=handle_positions,
+            door_yaws=door_yaws,
+            grasp_yaw_offset=self.cfg.grasp_yaw_offset_rad,
+            roll_rad=roll_rad,
+        )
 
-            grasp_yaw = angle_wrap(
-                float(door_yaws[i]) + float(self.cfg.grasp_yaw_offset_rad)
-                + float(grasp_yaw_extra_offset)
-            )
-
-            debug_this = True
-            reachable[i] = self._reachability.is_reachable(
-                base_xy=base_xy,
-                base_yaw=base_yaw,
-                grasp_xyz=handle_xyz,
-                grasp_yaw=grasp_yaw,
-                roll_rad=roll_rad,
-                debug=debug_this,
-            )
-
-            if reachable[i] and hasattr(self._reachability, 'quality_at'):
-                quality_by_angle[float(door_yaws[i])] = self._reachability.quality_at(
-                    base_xy=base_xy,
-                    base_yaw=base_yaw,
-                    grasp_xyz=handle_xyz,
-                    grasp_yaw=grasp_yaw,
-                    roll_rad=roll_rad,
-                )
+        quality_by_angle = {}
+        if hasattr(self._reachability, 'quality_at'):
+            for i in range(len(door_yaws)):
+                if reachable[i]:
+                    grasp_yaw = angle_wrap(
+                        float(door_yaws[i]) + float(self.cfg.grasp_yaw_offset_rad)
+                    )
+                    quality_by_angle[float(door_yaws[i])] = self._reachability.quality_at(
+                        base_xy=base_xy,
+                        base_yaw=base_yaw,
+                        grasp_xyz=[float(handle_positions[i, 0]),
+                                   float(handle_positions[i, 1]),
+                                   float(self.cfg.handle_height)],
+                        grasp_yaw=grasp_yaw,
+                        roll_rad=roll_rad,
+                        pitch_rad=pitch_rad,
+                    )
 
         return reachable, quality_by_angle
 
@@ -233,19 +227,15 @@ class LambdaComputer(object):
         return feasible
 
     def compute(self, base_xy, base_yaw, hinge_xy, hinge_yaw, handle_radius,
-                door_geom, occ_grid, occ_thresh, opening_sign=1.0,
-                grasp_yaw_extra_offset=0.0):
+                door_geom, occ_grid, occ_thresh, opening_sign=1.0):
         """
         Returns LambdaResult containing interval-connected feasible angle sets.
-        grasp_yaw_extra_offset is added to grasp_yaw only, not handle positions.
-        Pass np.pi for pull doors to flip the approach direction.
         """
         t0 = time_module.time()
         self._stats["compute_calls"] += 1
 
         k = self._make_cache_key(
             base_xy, base_yaw, hinge_xy, hinge_yaw, handle_radius, opening_sign,
-            grasp_yaw_extra_offset
         )
 
         if k in self._cache:
@@ -260,7 +250,6 @@ class LambdaComputer(object):
 
         reachable, quality_by_angle = self._compute_reachable_mask(
             base_xy, base_yaw, door_yaws, handle_positions,
-            grasp_yaw_extra_offset=grasp_yaw_extra_offset
         )
 
         feasible = self._compute_feasible_mask(
@@ -283,6 +272,24 @@ class LambdaComputer(object):
                 float(base_xy[0]), float(base_xy[1]), float(np.degrees(base_yaw)),
                 n_reach, n_total, n_feas, n_total, len(components),
             )
+            if len(handle_positions) > 0:
+                hx0, hy0 = float(handle_positions[0, 0]), float(handle_positions[0, 1])
+                dx = hx0 - float(base_xy[0])
+                dy = hy0 - float(base_xy[1])
+                cos_y = np.cos(float(base_yaw))
+                sin_y = np.sin(float(base_yaw))
+                x_rel0 = cos_y * dx + sin_y * dy
+                y_rel0 = -sin_y * dx + cos_y * dy
+                _m = getattr(self._reachability, '_map', None)
+                _bx = (float(_m.x_bins[0]), float(_m.x_bins[-1])) if _m else (float('nan'), float('nan'))
+                _by = (float(_m.y_bins[0]), float(_m.y_bins[-1])) if _m else (float('nan'), float('nan'))
+                rospy.logwarn(
+                    "[LambdaComputer]   handle[0] world=(%.3f,%.3f) "
+                    "robot_rel x=%.3f y=%.3f "
+                    "(map x:[%.2f,%.2f] y:[%.2f,%.2f])",
+                    hx0, hy0, x_rel0, y_rel0,
+                    _bx[0], _bx[1], _by[0], _by[1],
+                )
 
         result = LambdaResult(
             angles0=angles0,
@@ -342,9 +349,6 @@ class LambdaComputer(object):
 
             if comp_max >= open_ref - tol:
                 idx1 = k
-
-        if idx0 is None and comps:
-            idx0 = 0
 
         if idx1 is None and comps:
             idx1 = max(range(len(comps)), key=lambda k: int(comps[k][-1]))

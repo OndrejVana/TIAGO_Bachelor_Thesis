@@ -24,7 +24,8 @@ class CostConfig(object):
                  w_reverse_straight=5.0,
                  w_reverse_arc=2.0,
                  w_rotation=10.0,
-                 w_quality=0.0):
+                 w_quality=0.0,
+                 w_dist=0.0):
         self.occ_threshold = occ_threshold
         self.unknown_cost = unknown_cost
         self.occ_cost = occ_cost
@@ -41,6 +42,7 @@ class CostConfig(object):
         self.w_reverse_arc = float(w_reverse_arc)
         self.w_rotation = float(w_rotation)
         self.w_quality = float(w_quality)
+        self.w_dist = float(w_dist)
 
 
 def _world_to_grid(occ, x, y):
@@ -240,16 +242,19 @@ def _compute_arm_costs(base_pose_samples, lambda_angles_per_pose, hinge_pose_map
     return arm_costs
 
 
-def _aggregate_transition_costs(costmap_costs, arm_costs, cfg, primitive_kind="fwd"):
+def _aggregate_transition_costs(costmap_costs, arm_costs, cfg, primitive_kind="fwd",
+                                 step_length=0.0):
     """
     Combine costmap and arm costs into final transition cost.
     Applies additive penalties for reverse and in-place rotation primitives
     to discourage oscillation while keeping them available when genuinely needed.
+    w_dist * step_length provides a guaranteed cost floor per translation step,
+    which is required for the heuristic admissibility proof.
     """
     worst_arm = float(np.max(arm_costs)) if arm_costs else 0.0
     sum_costmap = float(np.sum(costmap_costs))
 
-    base = cfg.w_costmap * sum_costmap + cfg.w_arm * worst_arm
+    base = cfg.w_costmap * sum_costmap + cfg.w_arm * worst_arm + cfg.w_dist * float(step_length)
 
     if primitive_kind == "rev":
         base += cfg.w_reverse_straight
@@ -262,7 +267,8 @@ def _aggregate_transition_costs(costmap_costs, arm_costs, cfg, primitive_kind="f
 
 
 def transition_cost(occ, base_pose_samples, lambda_angles_per_pose, handle_pose_from_angle_fn,
-                    hinge_pose_map, cfg, primitive_kind="fwd", quality_per_angle_per_pose=None):
+                    hinge_pose_map, cfg, primitive_kind="fwd", quality_per_angle_per_pose=None,
+                    step_length=0.0):
     """
     For each pose along the action:
         - Take min over feasible angles of arm_cost (+ optional quality penalty).
@@ -287,4 +293,4 @@ def transition_cost(occ, base_pose_samples, lambda_angles_per_pose, handle_pose_
     if arm_costs is None:
         return np.inf
 
-    return _aggregate_transition_costs(costmap_costs, arm_costs, cfg, primitive_kind)
+    return _aggregate_transition_costs(costmap_costs, arm_costs, cfg, primitive_kind, step_length)

@@ -24,7 +24,7 @@ except Exception:
 
 
 class IKServiceClient(object):
-    """Direct /compute_ik wrapper — faster than MoveIt group for batch queries."""
+    """Direct /compute_ik wrapper - faster than MoveIt group for batch queries."""
 
     def __init__(self, group_name, ee_link, ik_timeout_s):
         self.group_name = group_name
@@ -75,15 +75,13 @@ class QualityMapGenerator(object):
     """Computes a quality-scored reachability map over a 3-D (x, y, yaw) grid."""
 
     def __init__(self, ik_client, joint_names, neutral_joints,
-                 n_seeds, max_perturbation, connectivity_weight,
+                 n_seeds, max_perturbation,
                  max_joint_jump_rad=1.5):
         self.ik = ik_client
         self.joint_names = list(joint_names)
         self.neutral = np.asarray(neutral_joints, dtype=float)
         self.n_seeds = int(n_seeds)
         self.max_perturbation = float(max_perturbation)
-        self.w_connect = float(connectivity_weight)
-        self.w_robust = 1.0 - self.w_connect
         self.max_joint_jump_rad = float(max_joint_jump_rad)
 
     def _make_seeds(self, extra_seeds=None):
@@ -119,7 +117,7 @@ class QualityMapGenerator(object):
 
     def _neighbor_poses(self, ix, iy, iyaw, x_bins, y_bins, yaw_bins_rad,
                         frame_id, fixed_z, grasp_yaw_offset_rad, wrist_roll_rad,
-                        theta_step_rad=0.0):
+                        theta_step_rad=0.0, wrist_pitch_rad=0.0):
         """Build PoseStamped for each spatial (±x, ±y), rotational (±theta),
         and yaw-axis (±yaw bin) neighbour.
 
@@ -130,7 +128,6 @@ class QualityMapGenerator(object):
         Nyaw = len(yaw_bins_rad)
         neighbors = []
 
-        # Spatial neighbours (robot translates, door stays fixed)
         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             nix, niy = ix + dx, iy + dy
             if 0 <= nix < len(x_bins) and 0 <= niy < len(y_bins):
@@ -142,15 +139,15 @@ class QualityMapGenerator(object):
                     yaw_rel=yaw_rad,
                     grasp_yaw_offset_rad=grasp_yaw_offset_rad,
                     wrist_roll_rad=wrist_roll_rad,
+                    wrist_pitch_rad=wrist_pitch_rad,
                 ))
 
-        # Rotational neighbours (robot rotates in place, door stays fixed)
         if theta_step_rad > 1e-6:
             for sign in (+1.0, -1.0):
                 dth = sign * float(theta_step_rad)
                 c, s = np.cos(dth), np.sin(dth)
-                xr = c * x_val - s * y_val
-                yr = s * x_val + c * y_val
+                xr =  c * x_val + s * y_val
+                yr = -s * x_val + c * y_val
                 yaw_r = yaw_rad - dth
                 neighbors.append(_build_pose(
                     frame_id=frame_id,
@@ -160,10 +157,9 @@ class QualityMapGenerator(object):
                     yaw_rel=yaw_r,
                     grasp_yaw_offset_rad=grasp_yaw_offset_rad,
                     wrist_roll_rad=wrist_roll_rad,
+                    wrist_pitch_rad=wrist_pitch_rad,
                 ))
 
-        # Yaw-axis neighbours (door rotates by one bin, robot stays fixed)
-        # Yaw is circular so we wrap around at the boundaries.
         for sign in (+1, -1):
             niyaw = (iyaw + sign) % Nyaw
             neighbors.append(_build_pose(
@@ -203,7 +199,7 @@ class QualityMapGenerator(object):
 
     def generate(self, x_bins, y_bins, yaw_bins_rad,
                  frame_id, fixed_z, grasp_yaw_offset_rad, wrist_roll_rads=None,
-                 theta_step_rad=0.0):
+                 theta_step_rad=0.0, wrist_pitch_rad=0.0):
         """Run quality computation over the full grid.
         Returns float32 array of shape [Nx, Ny, Nyaw, Nroll].
         wrist_roll_rads: list of roll values to compute (default [0.0]).
@@ -218,11 +214,11 @@ class QualityMapGenerator(object):
 
         rospy.loginfo(
             "[QualityMap] Grid: %d x %d x %d x %d rolls = %d cells  "
-            "(~%d IK calls,  n_seeds=%d,  connectivity_weight=%.2f,  "
+            "(~%d IK calls,  n_seeds=%d,  "
             "wrist_rolls=%s rad,  grasp_yaw_offset=%.4f rad,  theta_step=%.4f rad,  "
             "max_joint_jump=%.3f rad)",
             Nx, Ny, Nyaw, Nroll, total,
-            total * (self.n_seeds + n_neighbors), self.n_seeds, self.w_connect,
+            total * (self.n_seeds + n_neighbors), self.n_seeds,
             str([round(r, 4) for r in wrist_roll_rads]),
             grasp_yaw_offset_rad, theta_step_rad,
             self.max_joint_jump_rad,
@@ -246,17 +242,19 @@ class QualityMapGenerator(object):
                             yaw_rel=float(yaw_bins_rad[iyaw]),
                             grasp_yaw_offset_rad=grasp_yaw_offset_rad,
                             wrist_roll_rad=wrist_roll_rad,
+                            wrist_pitch_rad=wrist_pitch_rad,
                         )
 
                         robustness, all_sols = self._compute_robustness(
                             pose, extra_seeds=prev_yaw_solutions
                         )
-                        prev_yaw_solutions = all_sols  # carry forward into next yaw bin
+                        prev_yaw_solutions = all_sols
 
                         nb_poses = self._neighbor_poses(
                             ix, iy, iyaw, x_bins, y_bins, yaw_bins_rad,
                             frame_id, fixed_z, grasp_yaw_offset_rad, wrist_roll_rad,
                             theta_step_rad=theta_step_rad,
+                            wrist_pitch_rad=wrist_pitch_rad,
                         )
                         connectivity = self._compute_connectivity(nb_poses, all_sols)
 
@@ -293,7 +291,7 @@ def _print_progress(done, total, t_start):
 
 
 def _build_pose(frame_id, x_rel, y_rel, z_abs, yaw_rel,
-                grasp_yaw_offset_rad=0.0, wrist_roll_rad=0.0):
+                grasp_yaw_offset_rad=0.0, wrist_roll_rad=0.0, wrist_pitch_rad=0.0):
     """
     Build a PoseStamped in the robot base frame.
     """
@@ -304,7 +302,7 @@ def _build_pose(frame_id, x_rel, y_rel, z_abs, yaw_rel,
     ps.pose.position.y = float(y_rel)
     ps.pose.position.z = float(z_abs)
     grasp_yaw = (float(yaw_rel) + float(grasp_yaw_offset_rad) + np.pi) % (2.0 * np.pi) - np.pi
-    q = tft.quaternion_from_euler(float(wrist_roll_rad), 0.0, grasp_yaw)
+    q = tft.quaternion_from_euler(float(wrist_roll_rad), float(wrist_pitch_rad), grasp_yaw)
     ps.pose.orientation.x, ps.pose.orientation.y = q[0], q[1]
     ps.pose.orientation.z, ps.pose.orientation.w = q[2], q[3]
     return ps
@@ -348,7 +346,8 @@ def _parse_neutral_joints(neutral_str, n_joints):
 
 
 def _save_map(path, x_bins, y_bins, yaw_bins_rad, quality, quality_threshold, fixed_z,
-              wrist_roll_rads=None, grasp_yaw_offset_rad=0.0, group="", ee_link=""):
+              wrist_roll_rads=None, grasp_yaw_offset_rad=0.0, grasp_pitch_rad=0.0,
+              group="", ee_link=""):
     """Save 4D quality map [Nx, Ny, Nyaw, Nroll] to compressed NPZ."""
     if wrist_roll_rads is None:
         wrist_roll_rads = [0.0]
@@ -370,6 +369,7 @@ def _save_map(path, x_bins, y_bins, yaw_bins_rad, quality, quality_threshold, fi
         wrist_roll_rad_bins=np.asarray(wrist_roll_rads, dtype=float),
         gen_wrist_roll_rad=np.asarray(float(wrist_roll_rads[0]), dtype=float),  # legacy
         gen_grasp_yaw_offset_rad=np.asarray(float(grasp_yaw_offset_rad), dtype=float),
+        gen_grasp_pitch_rad=np.asarray(float(grasp_pitch_rad), dtype=float),
         gen_group=np.asarray(str(group)),
         gen_ee_link=np.asarray(str(ee_link)),
     )
@@ -401,6 +401,9 @@ def _build_arg_parser():
     parser.add_argument("--grasp-yaw-offset-rad", type=float, default=0.0,
                         help="Offset added to door yaw for grasp orientation. "
                              "Must match planner/grasp_yaw_offset_rad in planner.yaml.")
+    parser.add_argument("--grasp-pitch-rad", type=float, default=0.0,
+                        help="Fixed wrist pitch (rad) for IK test poses. "
+                             "Must match planning/grasp_pitch_rad in planner.yaml.")
     parser.add_argument("--wrist-roll-rads", type=str, default="0.0",
                         help="Comma-separated wrist roll values (rad) for IK test poses. "
                              "One map slice is generated per roll. "
@@ -423,8 +426,6 @@ def _build_arg_parser():
                         help="IK seeds per cell for robustness scoring")
     parser.add_argument("--max-joint-perturbation", type=float, default=0.8,
                         help="Max random seed perturbation in rad")
-    parser.add_argument("--connectivity-weight", type=float, default=0.5,
-                        help="Weight for connectivity vs robustness [0..1]")
     parser.add_argument("--quality-threshold", type=float, default=0.25,
                         help="Min quality score to classify a cell as reachable")
     parser.add_argument("--neutral-joints", default="",
@@ -464,7 +465,6 @@ def main():
         neutral_joints=neutral,
         n_seeds=args.n_seeds,
         max_perturbation=args.max_joint_perturbation,
-        connectivity_weight=args.connectivity_weight,
         max_joint_jump_rad=args.max_joint_jump_rad,
     )
 
@@ -478,6 +478,7 @@ def main():
         grasp_yaw_offset_rad=args.grasp_yaw_offset_rad,
         wrist_roll_rads=wrist_roll_rads,
         theta_step_rad=np.radians(args.theta_step_deg),
+        wrist_pitch_rad=args.grasp_pitch_rad,
     )
     elapsed = time.time() - t0
 
@@ -485,6 +486,7 @@ def main():
               quality, args.quality_threshold, args.fixed_z,
               wrist_roll_rads=wrist_roll_rads,
               grasp_yaw_offset_rad=args.grasp_yaw_offset_rad,
+              grasp_pitch_rad=args.grasp_pitch_rad,
               group=args.group,
               ee_link=args.ee_link)
 

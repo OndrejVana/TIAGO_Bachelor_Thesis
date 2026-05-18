@@ -17,6 +17,7 @@ from moveit_msgs.srv import GetPositionIK, GetPositionIKRequest
 from moveit_msgs.srv import GetStateValidity, GetStateValidityRequest
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_msgs.msg import RobotState as MoveItRobotState
+from moveit_msgs.msg import Constraints, JointConstraint
 
 
 class ArmTrajConfig(object):
@@ -28,7 +29,8 @@ class ArmTrajConfig(object):
                  ik_max_failure_fraction=0.15,
                  ik_max_joint_jump_rad=2.0,
                  unseeded_max_jump_rad=0.5,
-                 ik_max_consecutive_gap=2):
+                 ik_max_consecutive_gap=2,
+                 ik_joint_constraints=None):
         self.group = group
         self.ee_link = ee_link
         self.ik_timeout = ik_timeout
@@ -44,6 +46,7 @@ class ArmTrajConfig(object):
         self.ik_max_joint_jump_rad = float(ik_max_joint_jump_rad)
         self.unseeded_max_jump_rad = float(unseeded_max_jump_rad)
         self.ik_max_consecutive_gap = int(ik_max_consecutive_gap)
+        self.ik_joint_constraints = list(ik_joint_constraints) if ik_joint_constraints else []
 
 
 class MoveItWaypointIK(object):
@@ -147,7 +150,7 @@ class MoveItWaypointIK(object):
         req = GetPositionIKRequest()
         req.ik_request.group_name = self.cfg.group
         req.ik_request.pose_stamped = pose_stamped
-        req.ik_request.timeout = rospy.Duration(self.cfg.ik_timeout * 10)
+        req.ik_request.timeout = rospy.Duration(self.cfg.ik_timeout)
         req.ik_request.attempts = 10
 
         if self.cfg.ee_link:
@@ -160,6 +163,18 @@ class MoveItWaypointIK(object):
                 rs.joint_state.name = list(active_names)
                 rs.joint_state.position = [float(v) for v in seed]
                 req.ik_request.robot_state = rs
+
+        if self.cfg.ik_joint_constraints:
+            c = Constraints()
+            for jc_cfg in self.cfg.ik_joint_constraints:
+                jc = JointConstraint()
+                jc.joint_name       = str(jc_cfg["joint"])
+                jc.position         = float(jc_cfg.get("position", 0.0))
+                jc.tolerance_above  = float(jc_cfg.get("tolerance_above", 0.5))
+                jc.tolerance_below  = float(jc_cfg.get("tolerance_below", 0.5))
+                jc.weight           = float(jc_cfg.get("weight", 1.0))
+                c.joint_constraints.append(jc)
+            req.ik_request.constraints = c
 
         try:
             resp = self._ik_srv(req)
@@ -233,6 +248,23 @@ class MoveItWaypointIK(object):
         ps.pose.orientation.z = float(q_new[2])
         ps.pose.orientation.w = float(q_new[3])
         return ps
+    
+    def _pose_with_wrist_roll(self, pose_stamped, roll_rad):
+        """
+        Rotate the EE pose about its own approach axis (EE Z) by roll_rad.
+        Keeps the grasp position and approach direction fixed — only the wrist
+        twist changes, which is the redundant DoF IK can exploit.
+        """
+        o = pose_stamped.pose.orientation
+        q_ee = [o.x, o.y, o.z, o.w]
+        q_rot = tft.quaternion_about_axis(float(roll_rad), [0.0, 0.0, 1.0])
+        q_new = tft.quaternion_multiply(q_ee, q_rot)
+        ps = deepcopy(pose_stamped)
+        ps.pose.orientation.x = float(q_new[0])
+        ps.pose.orientation.y = float(q_new[1])
+        ps.pose.orientation.z = float(q_new[2])
+        ps.pose.orientation.w = float(q_new[3])
+        return ps
 
     def _joint_distance(self, q_a, q_b):
         """Max absolute joint difference between two configurations."""
@@ -275,7 +307,7 @@ class MoveItWaypointIK(object):
                 )
 
         for roll in self.cfg.fallback_wrist_rolls:
-            pose_alt = self._pose_with_roll(pose, roll)
+            pose_alt = self._pose_with_wrist_roll(pose, roll)
             q_alt = self._call_ik_service(pose_alt, seed)
             if q_alt is None:
                 q_alt = self._call_ik_service(pose_alt, seed=None)
@@ -422,12 +454,10 @@ class MoveItWaypointIK(object):
         seed = None
         n_failed = 0
 
-        # Pre-compute timestamps so the gap-filler can interpolate correctly.
         all_timestamps = [
             float(timestamps[i]) if timestamps is not None else i * self.cfg.waypoint_dt
             for i in range(n)
         ]
-        # all_joints[i] = list of joint positions (IK success) or None (failure).
         all_joints = [None] * n
 
         for i, ps in enumerate(ee_target_path.poses):
@@ -497,7 +527,6 @@ class MoveItWaypointIK(object):
             next_i = next((j for j in range(i + 1, n)
                            if all_joints[j] is not None), None)
             if prev_i is None or next_i is None:
-                # Leading/trailing gap: no anchor on one side.
                 n_unfillable += 1
                 continue
             dt = all_timestamps[next_i] - all_timestamps[prev_i]
@@ -522,7 +551,6 @@ class MoveItWaypointIK(object):
                 n_filled, n_failed, max_consec
             )
 
-        # Abort for unfillable leading/trailing waypoints (no anchor on one side).
         max_unfillable = max(1, int(np.ceil(self.cfg.ik_max_failure_fraction * n)))
         if n_unfillable > max_unfillable:
             raise RuntimeError(

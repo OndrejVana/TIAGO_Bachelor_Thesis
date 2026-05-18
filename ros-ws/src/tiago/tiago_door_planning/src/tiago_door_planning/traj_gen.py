@@ -287,21 +287,6 @@ def build_ee_path_from_approach_direction(base_path, handle_path, frame_id,
     Build an EE target path whose position tracks the handle and whose orientation
     tracks the door rotation.
 
-    Args:
-        base_path: nav_msgs/Path - base poses (one per waypoint)
-        handle_path: nav_msgs/Path - handle poses (one per waypoint)
-        frame_id: str - output frame id
-        approach_offset: float (m) - pull EE back from handle
-        lateral_offset: float (m) - shift perpendicular to approach
-        wrist_roll_rad: float (rad) - palm roll; -pi/2 = palm-down
-        use_hinge_direction: bool - add door rotation to yaw
-        hinge_direction_delta_scale: float [0,1] - fraction of door angle to track
-        hinge_yaw: float|None - hinge->handle yaw (rad) at door=0; supply for exact map-convention match
-        grasp_yaw_offset_rad: float (rad) - constant yaw added to yaw_orient after
-                                            all other computation; use to align the
-                                            EE frame with the gripper convention
-                                            (e.g. -pi/2 if EE is 90° off)
-
     Returns:
         nav_msgs/Path of EE target poses
     """

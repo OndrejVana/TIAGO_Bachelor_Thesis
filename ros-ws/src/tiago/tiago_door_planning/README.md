@@ -19,9 +19,8 @@ tiago_door_planning/
 │   ├── door_planning.launch           # Starts the planning server
 │   └── door_execution.launch          # Starts the execution server
 ├── maps/
-│   ├── sim_map.npz                    # Single-arm simulation map
-│   ├── sim_map_right_arm.npz          # TIAGo++ right-arm map (hinge-left doors)
-│   └── sim_map_left_arm.npz           # TIAGo++ left-arm map (hinge-right doors)
+│   ├── reachability_map_4D_new_right.npz  # TIAGo++ right-arm map (hinge-left doors)
+│   └── reachability_map_4D_new_left.npz   # TIAGo++ left-arm map (hinge-right doors)
 ├── scripts/
 │   ├── door_planning_server.py        # Planning action server node
 │   ├── door_execution_server.py       # Execution action server node
@@ -86,14 +85,14 @@ source devel/setup.bash
 
 # 3. Launch planning + execution servers (offline map backend)
 roslaunch tiago_door_planning door_planning.launch \
-  reachability_map_right_arm:=$(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
-  reachability_map_left_arm:=$(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz
+  reachability_map_right_arm:=$(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  reachability_map_left_arm:=$(rospack find tiago_door_planning)/maps/reachability_map_4D_new_left.npz
 
 roslaunch tiago_door_planning door_execution.launch
 
 # 4. Trigger a plan-only test (plan a push door, no execution)
 rosrun tiago_door_planning test_door_opening.py \
-  _angle:=1.0 _push:=false _execute:=false _plan_time:=200.0
+  _angle:=1.0 _push:=false _execute:=false _plan_time:=200.0 _step:=true
 ```
 
 ---
@@ -106,8 +105,8 @@ roslaunch tiago_door_planning door_planning.launch
 
 # Planning server — offline map backend (TIAGo++ dual-arm)
 roslaunch tiago_door_planning door_planning.launch \
-  reachability_map_right_arm:=$(rospack find tiago_door_planning)/maps/reachability_map_2_right.npz \
-  reachability_map_left_arm:=$(rospack find tiago_door_planning)/maps/reachability_map_2_left.npz
+  reachability_map_right_arm:=$(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  reachability_map_left_arm:=$(rospack find tiago_door_planning)/maps/reachability_map_4D_new_left.npz
 
 # Execution server
 roslaunch tiago_door_planning door_execution.launch
@@ -292,7 +291,7 @@ rosrun tiago_door_planning test_grasp_pose.py _pitch:=90 _execute:=false
 rosrun tiago_door_planning test_grasp_pose.py _pitch:=90 _vel:=0.2
 
 # Handle-relative mode (requires /door/handle_pose_map)
-rosrun tiago_door_planning test_grasp_pose.py _use_handle:=true _pitch:=90 _execute:=false
+rosrun tiago_door_planning test_grasp_pose.py _use_handle:=true _pitch:=90 _roll:=-180 _yaw:=-90 _execute:=true
 rosrun tiago_door_planning test_grasp_pose.py _use_handle:=true _pitch:=90 _vel:=0.2
 
 # Visualise in RViz:  PoseStamped -> /test_grasp_pose/target
@@ -481,9 +480,9 @@ same as `door_execution_server.py` so the tuned values transfer directly.
 | `moveit/group` | `arm` | Fallback / single-arm MoveIt group |
 | `moveit/ee_link` | `""` | End-effector link (empty = MoveIt default) |
 | `moveit/group_right_arm` | `arm_right` | TIAGo++ right arm group |
-| `moveit/ee_link_right_arm` | `arm_right_7_link` | Right arm EE link |
+| `moveit/ee_link_right_arm` | `hand_right_grasping_frame` | Right arm EE link |
 | `moveit/group_left_arm` | `arm_left` | TIAGo++ left arm group |
-| `moveit/ee_link_left_arm` | `arm_left_7_link` | Left arm EE link |
+| `moveit/ee_link_left_arm` | `hand_left_grasping_frame` | Left arm EE link |
 | `moveit/ik_timeout` | `0.1` | Per-call IK timeout × 10 attempts = 1 s max (s) |
 | `moveit/plan_time` | `10.0` | MoveIt planning time (s) |
 | `moveit/ik_max_failure_fraction` | `0.15` | Max fraction of unfillable IK failures |
@@ -562,8 +561,8 @@ Current values in `config/planner.yaml`:
 
 | Arm   | `--grasp-yaw-offset-rad`                             | `--wrist-roll-rads`       | Runtime `reachability_wrist_roll_rad` |
 |-------|------------------------------------------------------|---------------------------|---------------------------------------|
-| right | `-1.5708` (`planner/grasp_yaw_offset_rad_right_arm`) | `0.0,-1.5708,-3.14159`    | `0.0` (default, tune as needed)       |
-| left  | `0.0`     (`planner/grasp_yaw_offset_rad_left_arm`)  | `0.0,-1.5708,-3.14159`    | `0.0` (default, tune as needed)       |
+| right | `-1.5708` (`planner/grasp_yaw_offset_rad_right_arm`) | `0.0,-1.5708,-3.14159`    | `-3.14159` (tune as needed)           |
+| left  | `-1.5708` (`planner/grasp_yaw_offset_rad_left_arm`)  | `0.0,-1.5708,-3.14159`    | `-3.14159` (tune as needed)           |
 
 **If you change `grasp_yaw_offset_rad` in `planner.yaml`, regenerate both maps.
 If you only change the wrist roll (`grasp_roll_rad`), update `planner/reachability_wrist_roll_rad` — no regeneration needed.**
@@ -580,7 +579,7 @@ print('group               :', d['gen_group'] if 'gen_group' in d else 'not stor
 print('fixed_z             :', d['fixed_z'])
 print('quality_threshold   :', d['quality_threshold'])
 print('grid shape (Nx,Ny,Nyaw,Nroll):', d['reachable'].shape)
-" $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz
+" $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz
 ```
 
 > The maps shipped in the repository (`sim_map_right_arm.npz`, `sim_map_left_arm.npz`) were generated
@@ -632,41 +631,39 @@ rosrun tiago_door_planning generate_reachability_map.py \
   --output    $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
   --frame-id  base_footprint \
   --group     arm_right \
-  --ee-link   arm_right_7_link \
+  --ee-link   hand_right_grasping_frame \
   --x-min 0.20  --x-max 1.00  --x-step 0.05 \
   --y-min -0.60 --y-max 0.60  --y-step 0.05 \
   --yaw-min-deg -180  --yaw-max-deg 175  --yaw-step-deg 5 \
   --fixed-z              1.05 \
   --grasp-yaw-offset-rad -1.5708 \
-  --wrist-roll-rads      0.0,-1.5708,-3.14159 \
+  --wrist-roll-rads      0.0,1.5708,-1.5708,-3.14159 \
   --theta-step-deg       22.5 \
   --max-joint-jump-rad   1.5 \
   --n-seeds              4 \
-  --connectivity-weight  0.5 \
   --quality-threshold    0.25 \
   --ik-timeout           0.05
 
-# Left arm — hinge-RIGHT doors
+# Left arm — hinge-LEFT doors
 rosrun tiago_door_planning generate_reachability_map.py \
   --output    $(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz \
   --frame-id  base_footprint \
   --group     arm_left \
-  --ee-link   arm_left_7_link \
+  --ee-link   hand_left_grasping_frame \
   --x-min 0.20  --x-max 1.00  --x-step 0.05 \
   --y-min -0.60 --y-max 0.60  --y-step 0.05 \
   --yaw-min-deg -180  --yaw-max-deg 175  --yaw-step-deg 5 \
   --fixed-z              1.05 \
-  --grasp-yaw-offset-rad  0.0 \
-  --wrist-roll-rads       0.0,-1.5708,-3.14159 \
+  --grasp-yaw-offset-rad -1.5708 \
+  --wrist-roll-rads       0.0,1.5708,-1.5708,-3.14159 \
   --theta-step-deg        22.5 \
   --max-joint-jump-rad    1.5 \
   --n-seeds               4 \
-  --connectivity-weight   0.5 \
   --quality-threshold     0.25 \
   --ik-timeout            0.05
 ```
 
-Grid: `17 × 25 × 72 × 3 rolls = 91 800` cells per arm. Expected runtime: **~9–12 h per arm** at `--yaw-step-deg 5` with 3 rolls (3× the single-roll time).
+Grid: `17 × 25 × 72 × 4 rolls = 122 400` cells per arm. Expected runtime: **~12–16 h per arm** at `--yaw-step-deg 5` with 4 rolls.
 
 ---
 
@@ -681,17 +678,16 @@ rosrun tiago_door_planning generate_reachability_map.py \
   --output    $(rospack find tiago_door_planning)/maps/sim_map_right_arm_fast.npz \
   --frame-id  base_footprint \
   --group     arm_right \
-  --ee-link   arm_right_7_link \
+  --ee-link   hand_right_grasping_frame \
   --x-min 0.20  --x-max 1.00  --x-step 0.05 \
   --y-min -0.60 --y-max 0.60  --y-step 0.05 \
   --yaw-min-deg -180  --yaw-max-deg 175  --yaw-step-deg 10 \
   --fixed-z              1.05 \
   --grasp-yaw-offset-rad -1.5708 \
-  --wrist-roll-rads      0.0,-1.5708,-3.14159 \
+  --wrist-roll-rads      0.0,1.5708,-1.5708,-3.14159 \
   --theta-step-deg       22.5 \
   --max-joint-jump-rad   1.5 \
   --n-seeds              3 \
-  --connectivity-weight  0.5 \
   --quality-threshold    0.25 \
   --ik-timeout           0.05
 
@@ -700,17 +696,16 @@ rosrun tiago_door_planning generate_reachability_map.py \
   --output    $(rospack find tiago_door_planning)/maps/sim_map_left_arm_fast.npz \
   --frame-id  base_footprint \
   --group     arm_left \
-  --ee-link   arm_left_7_link \
+  --ee-link   hand_left_grasping_frame \
   --x-min 0.20  --x-max 1.00  --x-step 0.05 \
   --y-min -0.60 --y-max 0.60  --y-step 0.05 \
   --yaw-min-deg -180  --yaw-max-deg 175  --yaw-step-deg 10 \
   --fixed-z               1.05 \
-  --grasp-yaw-offset-rad   0.0 \
-  --wrist-roll-rads        0.0,-1.5708,-3.14159 \
+  --grasp-yaw-offset-rad  -1.5708 \
+  --wrist-roll-rads        0.0,1.5708,-1.5708,-3.14159 \
   --theta-step-deg         22.5 \
   --max-joint-jump-rad     1.5 \
   --n-seeds                3 \
-  --connectivity-weight    0.5 \
   --quality-threshold      0.25 \
   --ik-timeout             0.05
 ```
@@ -721,8 +716,8 @@ Map paths are passed as launch file arguments — no manual YAML editing needed:
 
 ```bash
 roslaunch tiago_door_planning door_planning.launch \
-  reachability_map_right_arm:=$(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
-  reachability_map_left_arm:=$(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz
+  reachability_map_right_arm:=$(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  reachability_map_left_arm:=$(rospack find tiago_door_planning)/maps/reachability_map_4D_new_left.npz
 ```
 
 Or hard-code absolute paths in `config/planner.yaml`:
@@ -730,8 +725,8 @@ Or hard-code absolute paths in `config/planner.yaml`:
 ```yaml
 planner:
   reachability_backend: offline_map
-  reachability_map_path_right_arm: /absolute/path/to/sim_map_right_arm.npz
-  reachability_map_path_left_arm:  /absolute/path/to/sim_map_left_arm.npz
+  reachability_map_path_right_arm: /absolute/path/to/reachability_map_4D_new_right.npz
+  reachability_map_path_left_arm:  /absolute/path/to/reachability_map_4D_new_left.npz
 ```
 
 ---
@@ -740,36 +735,52 @@ planner:
 
 > MoveIt and the planning server do **not** need to be running for visualisation.
 
+The 4-D maps have shape `[Nx, Ny, Nyaw, Nroll]`. All plots require selecting a **wrist roll slice**
+via `--wrist-roll-rad`. Use the same value as `planner/reachability_wrist_roll_rad` in
+`config/planner.yaml` (currently `-3.14159`) to see exactly what the planner queries at runtime.
+If omitted, the first roll bin is used and a hint is printed.
+
 ### Single-arm
 
 ```bash
-# Print map summary
+# Print map summary (roll slice at the runtime value)
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map $(rospack find tiago_door_planning)/maps/sim_map.npz \
+  --map $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --wrist-roll-rad -3.14159 \
   --print-summary
 
-# 2-D quality slice at yaw = -90° (palm-left grasp)
+# 2-D quality slice at yaw = -3° (near-forward grasp, right arm at a door ahead)
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map $(rospack find tiago_door_planning)/maps/sim_map.npz \
-  --yaw-slice-deg -90
+  --map $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --wrist-roll-rad -3.14159 \
+  --yaw-slice-deg -3
 
 # Save slice to file
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map $(rospack find tiago_door_planning)/maps/sim_map.npz \
-  --yaw-slice-deg -90 \
-  --yaw-slice-save /tmp/slice_yaw_m90.png
+  --map $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --wrist-roll-rad -3.14159 \
+  --yaw-slice-deg -3 \
+  --yaw-slice-save /tmp/slice_right_yaw_m3.png
 
 # Yaw profile at a fixed (x, y) cell — shows quality vs. grasp direction
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map $(rospack find tiago_door_planning)/maps/sim_map.npz \
-  --xy-yaw-profile --x 0.60 --y 0.10
+  --map $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --wrist-roll-rad -3.14159 \
+  --xy-yaw-profile --x 0.55 --y 0.10
+
+# Roll profile — quality vs. wrist roll at a fixed (x, y, yaw) cell
+# Use this to pick the best roll for a given robot-handle geometry
+rosrun tiago_door_planning visualize_reachability_map.py \
+  --map $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --roll-profile --x 0.55 --y 0.10 --yaw-slice-deg -3
 
 # All outputs at once, saved to files
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map $(rospack find tiago_door_planning)/maps/sim_map.npz \
+  --map $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --wrist-roll-rad -3.14159 \
   --print-summary \
-  --yaw-slice-deg -90 --yaw-slice-save /tmp/slice.png \
-  --xy-yaw-profile --x 0.60 --y 0.0 --xy-yaw-save /tmp/profile.png
+  --yaw-slice-deg -3    --yaw-slice-save /tmp/slice.png \
+  --xy-yaw-profile --x 0.55 --y 0.0 --xy-yaw-save /tmp/profile.png
 ```
 
 ### Dual-arm (TIAGo++)
@@ -779,43 +790,49 @@ All dual-arm plots show **Right | Left | Union** panels side by side.
 ```bash
 # Summary for both arms + combined statistics
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map-right $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
-  --map-left  $(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz \
+  --map-right $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --map-left  $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_left.npz \
+  --wrist-roll-rad -3.14159 \
   --print-summary
 
-# Side-by-side quality slice at yaw = -90°
+# Side-by-side quality slice at yaw = -3° (near-forward, robot facing door)
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map-right $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
-  --map-left  $(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz \
-  --yaw-slice-deg -90
+  --map-right $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --map-left  $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_left.npz \
+  --wrist-roll-rad -3.14159 \
+  --yaw-slice-deg -3
 
 # Difference map: right − left quality (shows which arm is better where)
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map-right $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
-  --map-left  $(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz \
-  --diff-slice-deg -90
+  --map-right $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --map-left  $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_left.npz \
+  --wrist-roll-rad -3.14159 \
+  --diff-slice-deg -3
 
 # Max-over-yaw coverage overview (best quality each arm can achieve anywhere)
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map-right $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
-  --map-left  $(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz \
+  --map-right $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --map-left  $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_left.npz \
+  --wrist-roll-rad -3.14159 \
   --coverage-overview
 
 # Overlay yaw profiles for both arms at a single (x, y) point
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map-right $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
-  --map-left  $(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz \
-  --xy-yaw-profile --x 0.60 --y 0.10
+  --map-right $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --map-left  $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_left.npz \
+  --wrist-roll-rad -3.14159 \
+  --xy-yaw-profile --x 0.55 --y 0.10
 
 # All dual-arm plots saved with a common filename prefix
 rosrun tiago_door_planning visualize_reachability_map.py \
-  --map-right $(rospack find tiago_door_planning)/maps/sim_map_right_arm.npz \
-  --map-left  $(rospack find tiago_door_planning)/maps/sim_map_left_arm.npz \
+  --map-right $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+  --map-left  $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_left.npz \
+  --wrist-roll-rad -3.14159 \
   --print-summary \
-  --yaw-slice-deg -90 \
-  --diff-slice-deg -90 \
+  --yaw-slice-deg -3 \
+  --diff-slice-deg -3 \
   --coverage-overview \
-  --xy-yaw-profile --x 0.60 --y 0.0 \
+  --xy-yaw-profile --x 0.55 --y 0.0 \
   --save-prefix /tmp/dual_arm
 # Saves: /tmp/dual_arm_dual_yaw_slice.png
 #        /tmp/dual_arm_diff_slice.png
@@ -823,12 +840,28 @@ rosrun tiago_door_planning visualize_reachability_map.py \
 #        /tmp/dual_arm_dual_yaw_profile.png
 ```
 
+### Comparing roll slices
+
+To see how a different wrist roll affects the reachable workspace, just change `--wrist-roll-rad`.
+Available values are stored in the NPZ as `wrist_roll_rad_bins`; currently `0.0`, `-1.5708`, `-3.14159`.
+
+```bash
+for roll in 0.0 -1.5708 -3.14159; do
+  rosrun tiago_door_planning visualize_reachability_map.py \
+    --map-right $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_right.npz \
+    --map-left  $(rospack find tiago_door_planning)/maps/reachability_map_4D_new_left.npz \
+    --wrist-roll-rad $roll \
+    --coverage-overview \
+    --save-prefix /tmp/dual_arm_roll_${roll}
+done
+```
+
 ### Useful yaw angles to check
 
 | Yaw (deg) | Meaning |
 | --- | --- |
-| `0` | Grasp directed forward (robot facing door head-on) |
-| `-90` | Palm-left grasp — default for right arm on hinge-left doors |
-| `0` | Palm-forward — default for left arm on hinge-right doors |
-| `90` | Grasp from the left side |
-| `180` | Grasp from behind (behind the handle — unusual) |
+| `-3` | Near-forward grasp — robot facing door head-on (typical approach) |
+| `-90` | Palm-left grasp — right arm reaching sideways |
+| `90` | Palm-right grasp — left arm reaching sideways |
+| `155` | Robot facing WSW, right arm reaching NE (hinge-left door, far approach) |
+| `180` | Grasp from directly behind the handle |

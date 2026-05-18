@@ -81,10 +81,6 @@ class DoorExecutionServer(object):
             "~arm_controller_left",
             _arm_legacy if _arm_legacy else "/arm_left_controller/follow_joint_trajectory",
         )
-        self._torso_controller = rospy.get_param(
-            "~torso_controller",
-            "/torso_controller/follow_joint_trajectory"
-        )
         self._action_name = rospy.get_param("~action_name", "execute_door_opening")
 
     def _init_publishers(self):
@@ -118,15 +114,11 @@ class DoorExecutionServer(object):
         self._arm_client_left = actionlib.SimpleActionClient(
             self._arm_controller_left, FollowJointTrajectoryAction
         )
-        self._torso_client = actionlib.SimpleActionClient(
-            self._torso_controller, FollowJointTrajectoryAction
-        )
         self._arm_client = self._arm_client_right
 
         for name, client in [
             (self._arm_controller_right, self._arm_client_right),
             (self._arm_controller_left,  self._arm_client_left),
-            (self._torso_controller,     self._torso_client),
         ]:
             rospy.loginfo("Waiting for controller: %s", name)
             if not client.wait_for_server(rospy.Duration(10.0)):
@@ -199,7 +191,7 @@ class DoorExecutionServer(object):
 
         approach.points = [pt0, pt1]
 
-        arm_sub = self._split_trajectory(approach, set(approach.joint_names))
+        arm_sub = self._split_trajectory(approach, {n for n in approach.joint_names if "torso" not in n})
 
         clients = []
         if arm_sub:
@@ -395,7 +387,6 @@ class DoorExecutionServer(object):
         self._stop_base()
         self._arm_client_right.cancel_all_goals()
         self._arm_client_left.cancel_all_goals()
-        self._torso_client.cancel_all_goals()
 
     def _is_preempt_requested(self):
         return self._as.is_preempt_requested()
@@ -571,7 +562,7 @@ class DoorExecutionServer(object):
             pt.time_from_start = rospy.Duration(all_t[j])
             sub.points.append(pt)
 
-        arm_sub = self._split_trajectory(sub, set(sub.joint_names))
+        arm_sub = self._split_trajectory(sub, {n for n in sub.joint_names if "torso" not in n})
 
         if arm_sub:
             goal = FollowJointTrajectoryGoal()
@@ -677,13 +668,14 @@ class DoorExecutionServer(object):
           1. Unwrap joints to eliminate IK branch-flip spin-arounds.
           2. Resample to add dense intermediate points (smoother Cartesian path).
           3. Scale by velocity_scaling and compute central-difference velocities.
-          4. Split arm/torso joints and send to their controllers.
+          4. Strip torso joints; send arm-only trajectory to the arm controller.
         Both arm and base use the same velocity_scaling so they run in sync.
         """
-        traj = self._resample_arm_trajectory(arm_traj, subdivisions=4)
+        traj = self._unwrap_joint_trajectory(arm_traj)
+        traj = self._resample_arm_trajectory(traj, subdivisions=4)
         scaled = self._scale_arm_trajectory(traj, velocity_scaling)
 
-        arm_sub = self._split_trajectory(scaled, set(scaled.joint_names))
+        arm_sub = self._split_trajectory(scaled, {n for n in scaled.joint_names if "torso" not in n})
 
         if arm_sub:
             goal = FollowJointTrajectoryGoal()
@@ -836,7 +828,16 @@ class DoorExecutionServer(object):
         )
 
         if arm_state not in (actionlib.GoalStatus.SUCCEEDED, actionlib.GoalStatus.LOST):
-            return False, "arm execution failed: state={}".format(arm_state)
+            result = self._arm_client.get_result()
+            error_str = ""
+            if result is not None:
+                error_str = getattr(result, 'error_string', '') or ''
+                error_code = getattr(result, 'error_code', '')
+                rospy.logerr(
+                    "[Execution] Arm controller ABORT — error_code=%s error_string='%s'",
+                    error_code, error_str,
+                )
+            return False, "arm execution failed: state={} error='{}'".format(arm_state, error_str)
 
         return True, ""
 

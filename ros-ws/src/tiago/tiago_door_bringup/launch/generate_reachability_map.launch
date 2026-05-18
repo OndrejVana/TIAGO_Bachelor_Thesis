@@ -8,22 +8,25 @@
   <!-- single-arm options -->
   <arg name="group"   default="arm_$(arg arm)"
        doc="MoveIt planning group (single-arm mode only)"/>
-  <arg name="ee_link" default="arm_$(arg arm)_7_link"
+  <arg name="ee_link" default="hand_$(arg arm)_grasping_frame"
        doc="End-effector link name (single-arm mode only)"/>
 
   <arg name="output_map"
-       default="$(find tiago_door_planning)/maps/sim_map_$(arg arm)_arm.npz"
+       default="$(find tiago_door_planning)/maps/reachability_map_4D_new2_$(arg arm).npz"
        doc="Output .npz path (single-arm mode). Ignored when arm:=both."/>
 
   <arg name="grasp_yaw_offset_rad"
-       default="$(eval '-1.5708' if arg('arm') == 'right' else '0.0')"
-       doc="Grasp yaw offset (rad) — must match planner/grasp_yaw_offset_rad_{arm}_arm in planner.yaml"/>
+       default="-1.5708"
+       doc="Grasp yaw offset (rad) — must match planning/grasp_yaw_rad in planner.yaml"/>
+  <arg name="grasp_pitch_rad"
+       default="0.0"
+       doc="Fixed wrist pitch (rad) — must match planning/grasp_pitch_rad in planner.yaml"/>
   <arg name="wrist_roll_rads"
-       default="0.0,-1.5708,-3.14159"
-       doc="Comma-separated wrist roll values (rad) — one map slice per roll. Select at runtime via planner/reachability_wrist_roll_rad in planner.yaml"/>
+       default="0.0,1.5708,-1.5708,-3.14159"
+       doc="Comma-separated wrist roll values (rad) — one map slice per roll. 1.5708 matches grasp_roll_rad in planner.yaml and is the slice used at runtime (planner/reachability_wrist_roll_rad)."/>
 
   <arg name="output_base"
-       default="$(find tiago_door_planning)/maps/sim_map"
+       default="$(find tiago_door_planning)/maps/reachability_map_4D_new"
        doc="Base output path for both-arms mode (_right.npz and _left.npz are appended). Ignored when arm:=right or arm:=left."/>
 
   <!-- simulation bringup (shared by all modes) -->
@@ -60,18 +63,18 @@
             --frame-id base_footprint
             --group $(arg group)
             --ee-link $(arg ee_link)
-            --x-min 0.20 --x-max  1.00 --x-step 0.05
-            --y-min -0.60 --y-max 0.60 --y-step 0.05
+            --x-min -0.40 --x-max  1.00 --x-step 0.1
+            --y-min -0.80 --y-max 0.80 --y-step 0.1
             --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 5
             --fixed-z 1.05
             --grasp-yaw-offset-rad $(arg grasp_yaw_offset_rad)
+            --grasp-pitch-rad $(arg grasp_pitch_rad)
             --wrist-roll-rads $(arg wrist_roll_rads)
-            --theta-step-deg 22.5
+            --theta-step-deg 11.25
             --max-joint-jump-rad 1.5
-            --n-seeds 4
-            --connectivity-weight 0.5
-            --quality-threshold 0.25
-            --ik-timeout 0.05
+            --n-seeds 6
+            --quality-threshold 0.3
+            --ik-timeout 0.025
           "/>
   </group>
 
@@ -81,7 +84,7 @@
           name="generate_reachability_map_both"
           output="screen"
           required="true"
-          launch-prefix="/bin/bash -c 'sleep $(arg startup_delay) &amp;&amp; echo --- [1/2] RIGHT arm map: $(arg output_base)_right.npz --- &amp;&amp; $(find tiago_door_planning)/scripts/generate_reachability_map.py --output $(arg output_base)_right.npz --frame-id base_footprint --group arm_right --ee-link arm_right_7_link --x-min 0.20 --x-max 1.00 --x-step 0.05 --y-min -0.60 --y-max 0.60 --y-step 0.05 --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 5 --fixed-z 1.05 --grasp-yaw-offset-rad -1.5708 --wrist-roll-rads 0.0,-1.5708,-3.14159 --theta-step-deg 22.5 --max-joint-jump-rad 1.5 --n-seeds 4 --connectivity-weight 0.5 --quality-threshold 0.25 --ik-timeout 0.05 &amp;&amp; echo --- [2/2] LEFT arm map: $(arg output_base)_left.npz --- &amp;&amp; $(find tiago_door_planning)/scripts/generate_reachability_map.py --output $(arg output_base)_left.npz --frame-id base_footprint --group arm_left --ee-link arm_left_7_link --x-min 0.20 --x-max 1.00 --x-step 0.05 --y-min -0.60 --y-max 0.60 --y-step 0.05 --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 5 --fixed-z 1.05 --grasp-yaw-offset-rad 0.0 --wrist-roll-rads 0.0,-1.5708,-3.14159 --theta-step-deg 22.5 --max-joint-jump-rad 1.5 --n-seeds 4 --connectivity-weight 0.5 --quality-threshold 0.25 --ik-timeout 0.05 &amp;&amp; echo --- Both maps complete ---' --"
+          launch-prefix="/bin/bash -c 'sleep $(arg startup_delay) &amp;&amp; echo --- [1/2] RIGHT arm map: $(arg output_base)_right.npz --- &amp;&amp; $(find tiago_door_planning)/scripts/generate_reachability_map.py --output $(arg output_base)_right.npz --frame-id base_footprint --group arm_right --ee-link hand_right_grasping_frame --x-min 0.20 --x-max 1.00 --x-step 0.05 --y-min -0.60 --y-max 0.60 --y-step 0.05 --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 5 --fixed-z 1.05 --grasp-yaw-offset-rad -1.5708 --wrist-roll-rads 0.0,1.5708,-1.5708,-3.14159 --theta-step-deg 11.25 --max-joint-jump-rad 1.5 --n-seeds 4 --quality-threshold 0.25 --ik-timeout 0.05 &amp;&amp; echo --- [2/2] LEFT arm map: $(arg output_base)_left.npz --- &amp;&amp; $(find tiago_door_planning)/scripts/generate_reachability_map.py --output $(arg output_base)_left.npz --frame-id base_footprint --group arm_left --ee-link hand_left_grasping_frame --x-min 0.20 --x-max 1.00 --x-step 0.05 --y-min -0.60 --y-max 0.60 --y-step 0.05 --yaw-min-deg -180 --yaw-max-deg 175 --yaw-step-deg 5 --fixed-z 1.05 --grasp-yaw-offset-rad -1.5708 --wrist-roll-rads 0.0,1.5708,-1.5708,-3.14159 --theta-step-deg 11.25 --max-joint-jump-rad 1.5 --n-seeds 4 --quality-threshold 0.25 --ik-timeout 0.05 &amp;&amp; echo --- Both maps complete ---' --"
           args=""/>
   </group>
 

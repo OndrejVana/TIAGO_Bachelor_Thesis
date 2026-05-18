@@ -239,17 +239,8 @@ class DoorPlanningServer(object):
         cfg = PlannerConfig.from_rosparams("~")
         cfg.reachability_map_path = map_path
 
-        offset_param = "~planner/grasp_yaw_offset_rad_{}_arm".format(arm)
-        if rospy.has_param(offset_param):
-            cfg.grasp_yaw_offset_rad = float(rospy.get_param(offset_param))
-            rospy.loginfo(
-                "[PlanningServer] %s-arm grasp_yaw_offset_rad overridden to %.4f rad",
-                arm, cfg.grasp_yaw_offset_rad,
-            )
-
         planner = PlannerCore(cfg, door_model=self._door_model)
 
-        # Build the arm-specific MoveIt IK runner.
         moveit_group = str(rospy.get_param(group_param, "arm_{}_torso".format(arm)))
         ee_link      = str(rospy.get_param(ee_param,    "arm_{}_7_link".format(arm)))
 
@@ -272,6 +263,7 @@ class DoorPlanningServer(object):
             ik_max_joint_jump_rad=float(rospy.get_param("~moveit/ik_max_joint_jump_rad", 2.0)),
             unseeded_max_jump_rad=float(rospy.get_param("~moveit/unseeded_max_jump_rad", 0.5)),
             ik_max_consecutive_gap=int(rospy.get_param("~moveit/ik_max_consecutive_gap", 2)),
+            ik_joint_constraints=list(rospy.get_param("~moveit/ik_joint_constraints_push", [])),
         )
         ik = MoveItWaypointIK(arm_cfg)
 
@@ -648,13 +640,16 @@ class DoorPlanningServer(object):
         return self._last_execution_monitor_report
 
 
-    def _select_arm_for_hinge_side(self, hinge_side):
+    def _select_arm_for_hinge_side(self, hinge_side, push_motion):
         """
-        Return "right" or "left" based on hinge_side.
-          hinge_side == "left"  → handle is on the right → use right arm
-          hinge_side == "right" → handle is on the left  → use left arm
+        Return "right" or "left" arm based on hinge side and motion type.
+        Push: always right arm (right arm reachability map covers push trajectories).
+        Pull: arm opposite the hinge (handle side).
+          pull, hinge left  → right arm
+          pull, hinge right → left arm
         """
-        return "right" if str(hinge_side).strip().lower() == "left" else "left"
+        hinge = str(hinge_side).strip().lower()
+        return "right" if hinge == "left" else "left"
 
     def _execute(self, goal):
         fb = PlanDoorOpeningFeedback()
@@ -668,10 +663,10 @@ class DoorPlanningServer(object):
                 goal.allowed_planning_time, fb
             )
 
-            active_arm = self._select_arm_for_hinge_side(hinge_side)
+            active_arm = self._select_arm_for_hinge_side(hinge_side, goal.push_motion)
             rospy.loginfo(
-                "[PlanningServer] hinge_side='%s' → using %s arm for planning",
-                hinge_side, active_arm,
+                "[PlanningServer] hinge_side='%s' %s → using %s arm for planning",
+                hinge_side, "push" if goal.push_motion else "pull", active_arm,
             )
 
             if active_arm == "right" and self._planner_right is not None:
@@ -680,6 +675,14 @@ class DoorPlanningServer(object):
             elif active_arm == "left" and self._planner_left is not None:
                 self._planner = self._planner_left
                 self._ik      = self._ik_left
+
+            # Apply push/pull-specific IK joint constraints
+            if goal.push_motion:
+                self._ik.cfg.ik_joint_constraints = list(
+                    rospy.get_param("~moveit/ik_joint_constraints_push", []))
+            else:
+                self._ik.cfg.ik_joint_constraints = list(
+                    rospy.get_param("~moveit/ik_joint_constraints_pull", []))
 
 
             if self._occ is not None:
@@ -727,8 +730,6 @@ class DoorPlanningServer(object):
                 handle_pose.pose.position.x - hinge_pose.pose.position.x,
             )
 
-            if not goal.push_motion:
-                hinge_yaw = hinge_yaw + np.pi
             rospy.loginfo(
                 "[PlanningServer] hinge_yaw = %.3f rad (%.1f deg) from hinge (%.3f, %.3f) to handle (%.3f, %.3f)%s",
                 hinge_yaw, np.degrees(hinge_yaw),

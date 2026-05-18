@@ -19,8 +19,8 @@
       </rosparam>
 
       <rosparam param="TrajectoryPlannerROS">
-        max_vel_x: 0.5
-        min_vel_x: 0.1
+        max_vel_x: 0.2
+        min_vel_x: 0.05
         max_vel_theta: 1.0
         min_in_place_vel_theta: 0.4
         acc_lim_theta: 3.2
@@ -60,13 +60,13 @@
           enabled: false
           enabled_topic: "/door_mask/enabled"
           door_pose_topic: "/door/doorway_pose_map"  # PoseStamped in map frame
-          width_m: 1.0
+          width_m: 0.9
           thickness_m: 1.2
-          margin_m: 0.5
+          margin_m: 0.3
           set_unknown_instead_of_free: false
 
         inflation_layer:
-          inflation_radius: 0.3
+          inflation_radius: 0.1
           cost_scaling_factor: 10.0
       </rosparam>
 
@@ -104,13 +104,13 @@
           enabled: false
           enabled_topic: "/door_mask/enabled"
           door_pose_topic: "/door/doorway_pose_map"  # PoseStamped in map frame
-          width_m: 1.0
+          width_m: 0.9
           thickness_m: 1.2
-          margin_m: 0.5
+          margin_m: 0.3
           set_unknown_instead_of_free: false
 
         inflation_layer:
-          inflation_radius: 0.3
+          inflation_radius: 0.1
           cost_scaling_factor: 10.0
       </rosparam>
 

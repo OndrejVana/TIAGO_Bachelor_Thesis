@@ -1,8 +1,8 @@
 <launch>
-  <rosparam file="$(find tiago_arm_manipulation)/config/arm_manipulation.yaml" command="load"/>
-
   <node pkg="tiago_arm_manipulation"
         type="arm_manipulation_node.py"
         name="tiago_arm_manipulation"
-        output="screen" />
+        output="screen">
+    <rosparam file="$(find tiago_arm_manipulation)/config/arm_manipulation.yaml" command="load"/>
+  </node>
 </launch>

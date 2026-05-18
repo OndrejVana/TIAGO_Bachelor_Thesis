@@ -42,7 +42,7 @@ models:
     hinge_axis_tag: "y"
     hinge_offset_xyz:  [-0.75, 1.2, 0.0]
     hinge_offset_rpy:  [0.0, 0.0, 0.0]
-    handle_offset_xyz: [0.0, 0.2, 0.10]
+    handle_offset_xyz: [0.1, 0.16, 0.10]
     handle_offset_rpy: [0.0, 0.0, 0.0]
     door_width_m: 0.9
     handle_radius_m: 0.70
@@ -50,11 +50,11 @@ models:
 
   # Tag 1: pull, hinge on the left
   "1":
-    door_normal_axis_tag: "-z"
+    door_normal_axis_tag: "z"
     hinge_axis_tag: "y"
     hinge_offset_xyz:  [0.75, 1.2, 0.0]
     hinge_offset_rpy:  [0.0, 0.0, 0.0]
-    handle_offset_xyz: [0.0, 0.2, 0.10]
+    handle_offset_xyz: [-0.1, 0.16, 0.10]
     handle_offset_rpy: [0.0, 0.0, 3.14159]
     door_width_m: 0.9
     handle_radius_m: 0.70
@@ -66,7 +66,7 @@ models:
     hinge_axis_tag: "y"
     hinge_offset_xyz:  [-0.75, 1.2, 0.0]
     hinge_offset_rpy:  [0.0, 0.0, 0.0]
-    handle_offset_xyz: [0.0, 0.2, 0.10]
+    handle_offset_xyz: [0.1, 0.16, 0.10]
     handle_offset_rpy: [0.0, 0.0, 0.0]
     door_width_m: 0.9
     handle_radius_m: 0.70
@@ -74,11 +74,11 @@ models:
 
   # Tag 3: pull, hinge on the right
   "3":
-    door_normal_axis_tag: "-z"
+    door_normal_axis_tag: "z"
     hinge_axis_tag: "y"
     hinge_offset_xyz:  [0.75, 1.2, 0.0]
     hinge_offset_rpy:  [0.0, 0.0, 0.0]
-    handle_offset_xyz: [0.0, 0.2, 0.10]
+    handle_offset_xyz: [-0.1, 0.16, 0.10]
     handle_offset_rpy: [0.0, 0.0, 3.14159]
     door_width_m: 0.9
     handle_radius_m: 0.70

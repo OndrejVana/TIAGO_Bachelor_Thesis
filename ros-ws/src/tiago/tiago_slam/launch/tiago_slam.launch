@@ -23,8 +23,8 @@
     <remap from="scan"        to="$(arg scan_topic)"/>
     <param name="output_frame_id" value="$(arg base_frame)"/>
     <param name="scan_height"     value="10"/>
-    <param name="range_min"       value="0.3"/>
-    <param name="range_max"       value="8.0"/>
+    <param name="range_min"       value="0.45"/>
+    <param name="range_max"       value="1.90"/>
   </node>
 
   <node name="rgbd_odometry" pkg="rtabmap_ros" type="rgbd_odometry" output="screen">
@@ -89,7 +89,7 @@
     <param name="Icp/Iterations"               value="10"/>
 
     <param name="Grid/FromDepth" value="true"/>
-    <param name="Grid/RangeMax"  value="5.0"/>
+    <param name="Grid/RangeMax"  value="1.90"/>
     <param name="Grid/CellSize"  value="0.05"/>
     <param name="Grid/3D"        value="false"/>
     <param name="Grid/NormalsSegmentation" value="true"/>

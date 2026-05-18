@@ -21,12 +21,12 @@
     <!-- Door planning action -->
     <param name="interaction_topic"   value="/door/interaction"/>
     <param name="plan_door_action_ns" value="plan_door_opening"/>
-    <param name="goal_open_angle_rad" value="1.047"/>  <!-- 60 deg -->
-    <param name="planning_time_s"     value="30.0"/>
+    <param name="goal_open_angle_rad" value="0.6"/>
+    <param name="planning_time_s"     value="100.0"/>
 
     <!-- Door execution action -->
     <param name="execute_door_action_ns"      value="execute_door_opening"/>
-    <param name="execution_velocity_scaling"  value="0.5"/>
+    <param name="execution_velocity_scaling"  value="0.2"/>
     <param name="execution_timeout_s"         value="120.0"/>
 
     <!-- Go-through navigation -->

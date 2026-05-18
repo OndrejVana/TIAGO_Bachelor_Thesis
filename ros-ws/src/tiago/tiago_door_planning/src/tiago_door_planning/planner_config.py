@@ -56,6 +56,7 @@ class PlannerConfig(object):
                  use_grasp_yaw=True,
                  grasp_yaw_offset_rad=0.0,
                  reachability_wrist_roll_rad=None,
+                 grasp_pitch_rad=0.0,
                  use_eps_schedule=True,
                  w_astar=2.0,
                  eps_start=4.0,
@@ -102,9 +103,11 @@ class PlannerConfig(object):
         self.reachability_y_exclusion_half_width_m = float(reachability_y_exclusion_half_width_m)
         self.use_grasp_yaw = bool(use_grasp_yaw)
         self.grasp_yaw_offset_rad = float(grasp_yaw_offset_rad)
+        self.pull_grasp_yaw_offset_rad = float(grasp_yaw_offset_rad)  # overridden by from_rosparams
         self.reachability_wrist_roll_rad = (
             float(reachability_wrist_roll_rad) if reachability_wrist_roll_rad is not None else None
         )
+        self.grasp_pitch_rad = float(grasp_pitch_rad)
 
         self.use_eps_schedule = use_eps_schedule
         self.w_astar = w_astar
@@ -168,10 +171,14 @@ class PlannerConfig(object):
                cfg.reachability_y_exclusion_half_width_m)
         )
         cfg.use_grasp_yaw = bool(gp("planner/use_grasp_yaw", cfg.use_grasp_yaw))
-        cfg.grasp_yaw_offset_rad = float(gp("planning/grasp_yaw_offset_rad", cfg.grasp_yaw_offset_rad))
+        cfg.grasp_yaw_offset_rad = float(gp("planning/grasp_yaw_rad", cfg.grasp_yaw_offset_rad))
+        cfg.pull_grasp_yaw_offset_rad = float(
+            gp("planning/pull_grasp_yaw_rad", cfg.grasp_yaw_offset_rad)
+        )
 
-        rwr = gp("planner/reachability_wrist_roll_rad", None)
+        rwr = gp("planning/grasp_roll_rad", None)
         cfg.reachability_wrist_roll_rad = float(rwr) if rwr is not None else None
+        cfg.grasp_pitch_rad = float(gp("planning/grasp_pitch_rad", cfg.grasp_pitch_rad))
 
         cfg.use_eps_schedule = bool(gp("planner/use_eps_schedule", cfg.use_eps_schedule))
         cfg.w_astar = float(gp("planner/w_astar", cfg.w_astar))
@@ -208,6 +215,7 @@ class PlannerConfig(object):
             gp("costs/w_rotation", cfg.cost.w_rotation)
         )
         cfg.cost.w_quality = float(gp("costs/w_quality", cfg.cost.w_quality))
+        cfg.cost.w_dist = float(gp("costs/w_dist", cfg.cost.w_dist))
 
         cfg.monotonic_angle_tol_rad = float(
             gp("planner/monotonic_angle_tol_rad", cfg.monotonic_angle_tol_rad)
@@ -218,7 +226,8 @@ class PlannerConfig(object):
 class PlanOutput(object):
     """Result container returned by PlannerCore.plan()."""
 
-    def __init__(self, base_path, angles_rad, expanded_states):
+    def __init__(self, base_path, angles_rad, expanded_states, search_trace=None):
         self.base_path = base_path
         self.angles_rad = angles_rad
         self.expanded_states = expanded_states
+        self.search_trace = search_trace

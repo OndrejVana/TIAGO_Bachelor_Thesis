@@ -31,23 +31,23 @@ planning:
   grasp_offset_x: 0.0
   grasp_offset_y: 0.0
   grasp_offset_z: 0.0
-  grasp_roll_rad: -3.14159
-  grasp_pitch_rad: 0.3491
+  grasp_roll_rad: -1.5708
+  grasp_pitch_rad: 1.5708
   grasp_yaw_rad: -1.5708
 
   pull_grasp_offset_x: 0.0
   pull_grasp_offset_y: 0.0
   pull_grasp_offset_z: 0.0
-  pull_grasp_roll_rad: -3.14159
-  pull_grasp_pitch_rad: 1.5708 # 0.3491
+  pull_grasp_roll_rad: 1.5708
+  pull_grasp_pitch_rad: 1.5708
   pull_grasp_yaw_rad: -1.5708
 
 planner:
   # Lattice configuration
-  xy_resolution: 0.05
-  theta_bins: 16
-  primitive_step: 0.08
-  arc_radius_m: 0.40
+  xy_resolution: 0.1
+  theta_bins: 16 
+  primitive_step: 0.1
+  arc_radius_m: 0.2
   allow_reverse: true
   primitive_samples_n: 12
   
@@ -58,7 +58,7 @@ planner:
   
   # Robot constraints
   robot_radius: 0.30
-  reach_min: 0.35
+  reach_min: 0.45
   reach_max: 0.93
 
   # Geometric workspace constraints
@@ -80,43 +80,35 @@ planner:
   
   reachability_y_exclusion_half_width_m: 0.0
   use_grasp_yaw: true
-  reachability_wrist_roll_rad: 0.0
 
-  grasp_yaw_offset_rad_right_arm: -1.5708
-  grasp_yaw_offset_rad_left_arm:   0.0
-  
   # Search configuration
   use_eps_schedule: true
   w_astar: 2.0
-  eps_start: 3.0
-  eps_end: 1.0
-  eps_step: 1.0
+  eps_start: 8.0
+  eps_end: 2.0
+  eps_step: 2.0
   goal_open_angle_rad: 1.047 # 60 degrees
   goal_tolerance_rad: 0.175
 
   monotonic_angle_tol_rad: 0.00873 # about 0.5 deg
 
-base_planner:
-  retreat_distance: 0.50
-  retreat_steps: 10
-  max_yaw_change: 0.6
-
 costs:
   w_costmap: 1.0
-  w_arm: 1.0
-  arm_nominal_dist: 0.55
+  w_arm: 2.0
+  arm_nominal_dist: 0.7
   arm_sigma: 0.15
   arm_min_dist: 0.35
   arm_max_dist: 0.93
   arm_hard_penalty: 1000.0
   
-  arm_centerline_danger_m: 0.20
-  arm_centerline_penalty: 30.0
+  arm_centerline_danger_m: 0.10
+  arm_centerline_penalty: 10.0
 
-  w_reverse_straight: 5.0 # straight "rev" primitive
-  w_reverse_arc: 2.0 # arcRevL / arcRevR (pull-door backing arcs)
-  w_rotation: 10.0 # rotL / rotR in-place spins
-  w_quality: 2.0 # soft penalty for low-connectivity reachability cells
+  w_reverse_straight: 100.0 # 1.0 for pull 
+  w_reverse_arc: 50.0
+  w_rotation: 5.0 # 2.0 for pull
+  w_quality: 2.0
+  w_dist: 1.0
 
 moveit:
   group: arm # fallback / single-arm Tiago
@@ -124,17 +116,26 @@ moveit:
 
   # Per-arm MoveIt groups for Tiago++ dual-arm mode.
   group_right_arm:   arm_right
-  ee_link_right_arm: arm_right_7_link
+  ee_link_right_arm: hand_right_grasping_frame
   group_left_arm:    arm_left
-  ee_link_left_arm:  arm_left_7_link
+  ee_link_left_arm:  hand_left_grasping_frame
   ik_timeout: 0.1
   plan_time: 10.0
-  fallback_wrist_rolls: [0.0, -1.5708, 1.5708, 3.14159]
-  ik_max_failure_fraction: 0.15
-  ik_max_joint_jump_rad: 0.6
+  waypoint_dt: 0.40
+  fallback_wrist_rolls: [0.0, -0.2, -0.4, -0.6, -0.8, -1.0, 0.2, 0.4, 0.6, 0.8, 1.0,]
+  ik_max_failure_fraction: 0.75
+  ik_max_joint_jump_rad: 1.4
 
   unseeded_max_jump_rad: 0.6
-  ik_max_consecutive_gap: 2
+  ik_max_consecutive_gap: 25
+
+  ik_joint_constraints_push:
+    - joint: "arm_left_1_joint"
+      position: 1.50
+      tolerance_above: 0.3
+      tolerance_below: 0.3
+      weight: 1.0
+  ik_joint_constraints_pull: []
 
 monitor:
   time_monotonic_tol: 1.0e-6

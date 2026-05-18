@@ -7,7 +7,6 @@ import numpy as np
 
 from .utils import angle_wrap
 
-# Geometric reachability
 
 def _world_to_robot_xy(base_xy, base_yaw, target_xy):
     """
@@ -129,15 +128,36 @@ class ReachabilityBackendBase(object):
     def __init__(self, cfg):
         self.cfg = cfg
 
-    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, roll_rad=None, debug=False):
+    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw,
+                     roll_rad=None, pitch_rad=None, debug=False):
         raise NotImplementedError
 
-    def quality_at(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, roll_rad=None):
+    def batch_is_reachable(self, base_xy, base_yaw, handle_positions, door_yaws,
+                           grasp_yaw_offset, roll_rad=None):
+        """Fallback: call is_reachable in a loop. Override for performance."""
+        n = len(door_yaws)
+        reachable = np.zeros(n, dtype=bool)
+        for i in range(n):
+            grasp_yaw = angle_wrap(float(door_yaws[i]) + float(grasp_yaw_offset))
+            reachable[i] = self.is_reachable(
+                base_xy=base_xy,
+                base_yaw=base_yaw,
+                grasp_xyz=[float(handle_positions[i, 0]),
+                           float(handle_positions[i, 1]),
+                           float(self.cfg.handle_height)],
+                grasp_yaw=grasp_yaw,
+                roll_rad=roll_rad,
+            )
+        return reachable
+
+    def quality_at(self, base_xy, base_yaw, grasp_xyz, grasp_yaw,
+                   roll_rad=None, pitch_rad=None):
         return 1.0
 
 
 class GeometricReachabilityBackend(ReachabilityBackendBase):
-    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, roll_rad=None, debug=False):
+    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw,
+                     roll_rad=None, pitch_rad=None, debug=False):
         return check_geometric_reachability(
             base_xy, base_yaw, grasp_xyz, self.cfg, debug=debug
         )
@@ -293,6 +313,62 @@ class OfflineReachabilityMap(object):
         iroll = self._nearest_index(self.roll_bins, roll_rad) if roll_rad is not None else 0
         return bool(self.reachable[ix, iy, iyaw, iroll] > 0.5)
 
+    def batch_query(self, x_rels, y_rels, yaw_rels, roll_rad=None):
+        """
+        Vectorised reachability check for N samples.
+        x_rels, y_rels, yaw_rels: 1-D numpy arrays of length N.
+        Returns a boolean array of length N.
+        """
+        x_rels = np.asarray(x_rels, dtype=float)
+        y_rels = np.asarray(y_rels, dtype=float)
+        yaw_rels = np.asarray(yaw_rels, dtype=float)
+        n = len(x_rels)
+
+        in_bounds = (
+            (x_rels >= self.x_bins[0]) & (x_rels <= self.x_bins[-1]) &
+            (y_rels >= self.y_bins[0]) & (y_rels <= self.y_bins[-1])
+        )
+        reachable = np.zeros(n, dtype=bool)
+        if not np.any(in_bounds):
+            return reachable
+
+        idx = np.where(in_bounds)[0]
+
+        ix = np.clip(
+            np.searchsorted(self.x_bins, x_rels[idx], side='left'),
+            0, len(self.x_bins) - 1
+        )
+        iy = np.clip(
+            np.searchsorted(self.y_bins, y_rels[idx], side='left'),
+            0, len(self.y_bins) - 1
+        )
+        ix_lo = np.clip(ix - 1, 0, len(self.x_bins) - 1)
+        iy_lo = np.clip(iy - 1, 0, len(self.y_bins) - 1)
+        ix = np.where(
+            np.abs(x_rels[idx] - self.x_bins[ix_lo]) < np.abs(x_rels[idx] - self.x_bins[ix]),
+            ix_lo, ix
+        )
+        iy = np.where(
+            np.abs(y_rels[idx] - self.y_bins[iy_lo]) < np.abs(y_rels[idx] - self.y_bins[iy]),
+            iy_lo, iy
+        )
+
+        yaw_diff = np.abs(
+            ((yaw_rels[idx, np.newaxis] - self.yaw_bins_rad[np.newaxis, :] + np.pi)
+             % (2.0 * np.pi)) - np.pi
+        )
+        iyaw = np.argmin(yaw_diff, axis=1)
+
+        iroll = self._nearest_index(self.roll_bins, roll_rad) if roll_rad is not None else 0
+
+        if self.quality is not None:
+            q_vals = self.quality[ix, iy, iyaw, iroll]
+            reachable[idx] = q_vals >= self.quality_threshold
+        else:
+            reachable[idx] = self.reachable[ix, iy, iyaw, iroll] > 0
+
+        return reachable
+
     def query_quality(self, x_rel, y_rel, yaw_rel, roll_rad=None):
         """
         Return float quality score in [0, 1].
@@ -312,6 +388,7 @@ class OfflineMapReachabilityBackend(ReachabilityBackendBase):
     def __init__(self, cfg):
         ReachabilityBackendBase.__init__(self, cfg)
         self._map = OfflineReachabilityMap.load_npz(cfg.reachability_map_path)
+        self._pitch_warned = False
 
     def _check_z_compatibility(self, grasp_xyz, debug=False):
         dz = abs(float(grasp_xyz[2]) - float(self._map.fixed_z))
@@ -334,7 +411,16 @@ class OfflineMapReachabilityBackend(ReachabilityBackendBase):
             return angle_wrap(float(grasp_yaw) - float(base_yaw))
         return 0.0
 
-    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, roll_rad=None, debug=False):
+    def is_reachable(self, base_xy, base_yaw, grasp_xyz, grasp_yaw,
+                     roll_rad=None, pitch_rad=None, debug=False):
+        if pitch_rad is not None and not np.isclose(pitch_rad, 0.0) and not self._pitch_warned:
+            import rospy
+            rospy.logwarn(
+                "[OfflineMapReachabilityBackend] grasp_pitch_rad=%.4f but the map was built "
+                "with pitch=0. Non-zero pitch is ignored during planning.", pitch_rad
+            )
+            self._pitch_warned = True
+
         if not self._check_z_compatibility(grasp_xyz, debug=debug):
             return False
         x_rel, y_rel = self._relative_pose_in_robot_frame(base_xy, base_yaw, grasp_xyz)
@@ -353,12 +439,48 @@ class OfflineMapReachabilityBackend(ReachabilityBackendBase):
                    x_rel, y_rel, np.degrees(yaw_rel), grasp_xyz[2]))
         return ok
 
-    def quality_at(self, base_xy, base_yaw, grasp_xyz, grasp_yaw, roll_rad=None):
+    def batch_is_reachable(self, base_xy, base_yaw, handle_positions, door_yaws,
+                           grasp_yaw_offset, roll_rad=None):
         """
-        Return float quality score [0..1] for a grasp pose from the given base.
-        Returns 0.0 if z is out of tolerance or the position is outside map bounds.
-        For binary maps (heuristic/moveit), returns 1.0 or 0.0.
+        Vectorised reachability for N handle positions swept across door angles.
+        handle_positions: (N, 2) array of (x, y) in world frame.
+        door_yaws:        (N,) array of door panel yaw angles.
+        Returns a boolean (N,) array.
         """
+        handle_positions = np.asarray(handle_positions, dtype=float)
+        door_yaws = np.asarray(door_yaws, dtype=float)
+        n = len(door_yaws)
+
+        handle_z = float(self.cfg.handle_height) if hasattr(self.cfg, 'handle_height') else self._map.fixed_z
+        if abs(handle_z - self._map.fixed_z) > self.cfg.reachability_z_tol:
+            return np.zeros(n, dtype=bool)
+
+        base_x, base_y = float(base_xy[0]), float(base_xy[1])
+        cos_y = np.cos(float(base_yaw))
+        sin_y = np.sin(float(base_yaw))
+        dx = handle_positions[:, 0] - base_x
+        dy = handle_positions[:, 1] - base_y
+        x_rels = cos_y * dx + sin_y * dy
+        y_rels = -sin_y * dx + cos_y * dy
+
+        excl = self.cfg.reachability_y_exclusion_half_width_m
+        if excl > 0.0:
+            excluded = np.abs(y_rels) < excl
+        else:
+            excluded = np.zeros(n, dtype=bool)
+
+        if self.cfg.use_grasp_yaw:
+            raw = door_yaws + float(grasp_yaw_offset)
+            yaw_rels = ((raw - float(base_yaw) + np.pi) % (2.0 * np.pi)) - np.pi
+        else:
+            yaw_rels = np.zeros(n)
+
+        reachable = self._map.batch_query(x_rels, y_rels, yaw_rels, roll_rad=roll_rad)
+        reachable[excluded] = False
+        return reachable
+
+    def quality_at(self, base_xy, base_yaw, grasp_xyz, grasp_yaw,
+                   roll_rad=None, pitch_rad=None):
         if not self._check_z_compatibility(grasp_xyz):
             return 0.0
         x_rel, y_rel = self._relative_pose_in_robot_frame(base_xy, base_yaw, grasp_xyz)

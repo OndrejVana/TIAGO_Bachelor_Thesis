@@ -51,7 +51,8 @@ def _make_success_result(came, state, g_score, expands, message):
     )
 
 
-def _expand_successors(s, succ, g_score, came, open_heap, w, heuristic, counter):
+def _expand_successors(s, succ, g_score, came, open_heap, w, heuristic, counter,
+                        discovery_order=None):
     """
     Expand one state and update OPEN / g-values.
 
@@ -62,6 +63,8 @@ def _expand_successors(s, succ, g_score, came, open_heap, w, heuristic, counter)
         ng = g_score[s] + step_cost
 
         if ns not in g_score or ng < g_score[ns]:
+            if discovery_order is not None and ns not in discovery_order:
+                discovery_order[ns] = counter
             g_score[ns] = ng
             came[ns] = s
             counter += 1
@@ -72,13 +75,25 @@ def _expand_successors(s, succ, g_score, came, open_heap, w, heuristic, counter)
     return counter
 
 
-def weighted_astar(start, is_goal, succ, heuristic, w, time_limit_s):
+def _populate_trace(trace, g_score, came, closed, w, path, discovery_order=None):
+    trace['g_score'] = dict(g_score)
+    trace['came_from'] = dict(came)
+    trace['closed'] = frozenset(closed)
+    trace['eps'] = w
+    trace['success'] = bool(path)
+    trace['path'] = list(path)
+    if discovery_order is not None:
+        trace['discovery_order'] = dict(discovery_order)
+
+
+def weighted_astar(start, is_goal, succ, heuristic, w, time_limit_s, _trace=None):
     t_end = _current_time() + time_limit_s
 
     open_heap = []
     g_score = {start: 0.0}
     came = {}
     closed = set()
+    discovery_order = {start: 0} if _trace is not None else None
 
     expands = 0
     counter = 0
@@ -95,9 +110,13 @@ def weighted_astar(start, is_goal, succ, heuristic, w, time_limit_s):
         expands += 1
 
         if is_goal(s):
-            return _make_success_result(
+            result = _make_success_result(
                 came, s, g_score, expands, "weighted A* success"
             )
+            if _trace is not None:
+                _populate_trace(_trace, g_score, came, closed, w, result.path,
+                                discovery_order)
+            return result
 
         counter = _expand_successors(
             s=s,
@@ -108,7 +127,11 @@ def weighted_astar(start, is_goal, succ, heuristic, w, time_limit_s):
             w=w,
             heuristic=heuristic,
             counter=counter,
+            discovery_order=discovery_order,
         )
+
+    if _trace is not None:
+        _populate_trace(_trace, g_score, came, closed, w, [], discovery_order)
 
     if _current_time() >= t_end:
         return _make_failure_result(
@@ -122,7 +145,8 @@ def weighted_astar(start, is_goal, succ, heuristic, w, time_limit_s):
     )
 
 
-def _run_weighted_astar_iteration(start, is_goal, succ, heuristic, eps, total_start_time, total_time_s):
+def _run_weighted_astar_iteration(start, is_goal, succ, heuristic, eps, total_start_time, total_time_s,
+                                   _trace=None):
     """
     Run one weighted A* iteration for the current epsilon.
     """
@@ -135,7 +159,8 @@ def _run_weighted_astar_iteration(start, is_goal, succ, heuristic, eps, total_st
         succ,
         heuristic,
         w=eps,
-        time_limit_s=max(0.01, remaining)
+        time_limit_s=max(0.01, remaining),
+        _trace=_trace,
     )
 
 
@@ -188,7 +213,8 @@ def _success_result(best, elapsed, total_time_s, finished_schedule):
     )
 
 
-def eps_schedule_search(start, is_goal, succ, heuristic, eps_start, eps_end, eps_step, total_time_s):
+def eps_schedule_search(start, is_goal, succ, heuristic, eps_start, eps_end, eps_step, total_time_s,
+                        _trace_list=None):
     """
     Repeated Weighted A* with a decreasing epsilon schedule.
     Each iteration restarts from scratch with a lower epsilon and keeps the best solution found.
@@ -198,6 +224,7 @@ def eps_schedule_search(start, is_goal, succ, heuristic, eps_start, eps_end, eps
     eps = eps_start
 
     while eps >= eps_end and (_current_time() - t0) < total_time_s:
+        iter_trace = {} if _trace_list is not None else None
         result = _run_weighted_astar_iteration(
             start=start,
             is_goal=is_goal,
@@ -206,7 +233,10 @@ def eps_schedule_search(start, is_goal, succ, heuristic, eps_start, eps_end, eps
             eps=eps,
             total_start_time=t0,
             total_time_s=total_time_s,
+            _trace=iter_trace,
         )
+        if _trace_list is not None and iter_trace:
+            _trace_list.append(iter_trace)
 
         best = _update_best_result(best, result)
         eps -= eps_step
